@@ -1,0 +1,10 @@
+# for rendering in blender python
+pytest-shutil
+matplotlib
+tqdm
+hydra-core
+six
+natsort
+shortuuid
+moviepy
+numpy==1.21

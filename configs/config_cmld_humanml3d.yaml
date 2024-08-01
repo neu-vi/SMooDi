@@ -1,0 +1,159 @@
+####################################
+# The following are general settings
+####################################
+
+# Experiment name, more details in Section 'Experiment Name Explanation'
+NAME: CMLD_100STYLE_VAE
+# NAME: CMLD_MOCAP_MCLIP_M_WO_KL #
+# NAME: VAE_100STYLE_HumanML3D #
+
+#MLD: f(z_t,t) + alpha[f(z_t,t,Tx) - f(z_t,t)]
+
+#Current;v0: f(z_t,t,Cx) + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Cx)] good
+#V1:f(z_t,t) + alpha[f(z_t,t,Cx,Tx) - f(z_t,t)] good
+#V2:f(z_t,t) + alpha[f(z_t,t,Cx) - f(z_t,t)] + alpha[f(z_t,t,Tx) - f(z_t,t] good
+#V3:f(z_t,t) + + alpha[f(z_t,t,Tx) - f(z_t,t] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t)] 
+#V4:f(z_t,t) + + alpha[f(z_t,t,Tx) - f(z_t,t] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)] 
+
+#V5:f(z_t,t,Cx) + alpha[f(z_t,t,Tx,Cx) - f(z_t,t,Cx] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)]
+#V6:f(z_t,t)  + alpha[f(z_t,t,Tx,Cx) - f(z_t,t,Cx] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)]
+
+#CMLD_100STYLE_W_STYLETEXT #_JUST_STYLEINPUT #_FRZSE
+# NAME: Test
+# Debug mode. Set to True will enter the debug mode, then the program will
+# 1. use a tiny dataset for trianing and evaluation
+# 2. validate more intensively
+# 3. will not use `wandb logger`
+DEBUG: False
+# Devices. Optional: “cpu”, “gpu”
+ACCELERATOR: 'gpu'
+# Index of GPUs eg. [0] or [0,1,2,3]
+DEVICE: [0]
+
+#####################################
+# The following are training settings
+#####################################
+TRAIN:
+  # Model stage. Optional: "vae", "diffusion"
+  STAGE:  "vae" #diffusion
+  # Training dataset name
+  DATASETS: ['humanml3d']
+  # Number of dataloader workers
+  NUM_WORKERS: 8
+  # Size of batches
+  BATCH_SIZE: 64
+  # Total epochs for training
+  END_EPOCH: 100
+
+  # RESUME: ./experiments/mld/CMLD_100STYLE_W_STYLETEXT_CYCLE100_V1_01 # Resume training from this path
+  # PRETRAINED: ./experiments/mld/CMLD_100STYLE_W_STYLETEXT_CYCLE100_V1_01_WO_CYCLE/checkpoints/epoch=49.ckpt
+  # RESUME: "./experiments/mld/CMLD_100STYLE_W_STYLETEXT_CYCLE100_V1_01_COMBINE"
+  # PRETRAINED_VAE: ./experiments/mld/CMLD_100STYLE_VAE/checkpoints/epoch=59.ckpt  # vae model path
+  PRETRAINED_VAE: ./checkpoints/mld_humanml3d_checkpoint/1222_mld_humanml3d_FID041.ckpt # vae model path
+  PRETRAINED_MLD: ./checkpoints/mld_humanml3d_checkpoint/1222_mld_humanml3d_FID041.ckpt # vae model path
+
+  # PRETRAINED_STYLE: ./experiments/style_encoder_mocap500.pt
+  PRETRAINED_STYLE: ./experiments/style_encoder_robust47_100.pt
+  # PRETRAINED_STYLE: ./experiments/style_encoder_filter200.pt 
+  OPTIM:
+    TYPE: AdamW # Optimizer type
+    LR: 1e-4 # Learning rate
+  # Ablation study configurations.
+  ABLATION:
+    SKIP_CONNECT: True
+    PE_TYPE: mld
+    DIFF_PE_TYPE: mld
+
+#####################################
+# The following are validation settings
+#####################################
+EVAL:
+  DATASETS: ['humanml3d'] # Evaluating datasets
+  BATCH_SIZE: 32 # Evaluating Batch size
+  SPLIT: test
+
+#####################################
+# The following are testing settings
+#####################################
+TEST:
+  # CHECKPOINTS: ./checkpoints/mld_humanml3d_checkpoint/1222_mld_humanml3d_FID041.ckpt # Pretrained model path
+  # CHECKPOINTS: ./experiments/mld/CMLD_MOCAP_W_STYLETEXT_TEST/checkpoints/epoch=49-v2.ckpt # Pretrained model path
+  CHECKPOINTS: ./experiments/mld/CMLD_100STYLE_W_STYLETEXT_CYCLE100_V1_01/checkpoints/epoch=49.ckpt # Pretrained model path
+  # CHECKPOINTS: ./experiments/mld/CMLD_100STYLE_VAE/checkpoints/epoch=99.ckpt # Pretrained model path
+
+  DATASETS: ['humanml3d'] # training datasets
+  SPLIT: test
+  BATCH_SIZE: 1 # training Batch size
+  MEAN: Fals
+  NUM_SAMPLES: 1
+  FACT: 1
+
+#####################################
+# The following are basic datasets settings
+#####################################
+DATASET:
+  JOINT_TYPE: 'humanml3d' # join type
+
+#####################################
+# The following are metric settings
+#####################################
+METRIC:
+  TYPE: ['TM2TMetrics']
+
+# TM2TMetrics_Walk TM2TMetrics_MST TM2TMetrics_MST_XIA TemosMetric
+#####################################
+# The following are training losses settings
+#####################################
+LOSS:
+  TYPE: mld # Losses type
+  LAMBDA_LATENT: 1.0e-5 # Lambda for latent Losses
+  LAMBDA_KL: 1.0e-4 # Lambda for kl Losses
+  LAMBDA_REC: 1.0 # Lambda for reconstruction Losses
+  LAMBDA_GEN: 1.0 # Lambda for text-motion generation losses
+  LAMBDA_CROSS: 1.0 # Lambda for reconstruction Losses
+  LAMBDA_CYCLE: 0.0 # Lambda for cycle Losses
+  LAMBDA_PRIOR: 0.0
+  DIST_SYNC_ON_STEP: False # Sync Losses on step when distributed trained
+
+#####################################
+# The following are basic model settings
+#####################################
+model:
+  vae: true # whether vae model
+  model_type: mld # model type
+  condition: 'text'
+  latent_dim: [1, 256] # latent dimension
+  ff_size: 1024 #
+  num_layers: 9 # number of layers
+  num_head: 4 # number of head layers
+  droupout: 0.5 # dropout rate
+  activation: gelu # activation type
+  guidance_scale: 7.5 #7.5 #
+  guidance_scale_style: 1.5 #6.5 #7.5 #
+  guidance_uncondp: 0.1 # 0.1 0.25 0.5
+  guidance_uncondp_style: 0.1
+
+  cmld: true #true
+  is_train_motionclip: False
+  is_control: true #true
+  is_guidance: False  
+  # is_regularizer: False
+  is_cycle: true #true
+  is_recon: False
+  is_test: true  
+  is_test_walk: False
+
+  guidance_mode: 'v4'
+
+#####################################
+# The following are loggers settings
+#####################################
+LOGGER:
+  SACE_CHECKPOINT_EPOCH: 5
+  LOG_EVERY_STEPS: 1
+  VAL_EVERY_STEPS: 200
+  TENSORBOARD: True
+  WANDB:
+    PROJECT: null
+    OFFLINE: False
+    RESUME_ID: null
