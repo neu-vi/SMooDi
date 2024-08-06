@@ -19,7 +19,7 @@ If you find our code or paper helpful, please consider starring our repository a
 
 ## TODO List
 - [x] Release retargeted 100STYLE dataset.
-- [ ] Code for Inference and Pretrained model.
+- [x] Code for Inference and Pretrained model.
 - [ ] Evaluation code and metrics.
 - [ ] Code for training.
 
@@ -33,6 +33,8 @@ We have released the retargeted 100STYLE dataset, mapped to the SMPL skeleton, a
 
 3. **Deriving HumanML3D Features**: Following the extraction, we used the instructions in the `motion_representation.ipynb` notebook available in [HumanML3D](https://github.com/EricGuo5513/HumanML3D) to derive the HumanML3D features.
 
+## PRETRAINED_WEIGHTS
+Available on [Google Drive](https://drive.google.com/drive/folders/12m_v_vybVeAQFkH9bP8wmJIxJhGoIJL1?usp=sharing).
 
 ## Acknowledgments
 
