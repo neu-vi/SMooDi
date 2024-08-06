@@ -1,0 +1,1 @@
+python demo_cmld.py --cfg ./configs/config_cmld_humanml3d.yaml --cfg_assets ./configs/assets.yaml --example ./demo/test.tx
