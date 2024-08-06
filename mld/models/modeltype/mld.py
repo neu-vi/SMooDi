@@ -12,14 +12,6 @@ from mld.data.humanml.scripts.motion_process import recover_root_rot_pos
 from mld.data.humanml.common.quaternion import quaternion_to_cont6d
 from collections import OrderedDict
 import torch.nn as nn
-import hydra
-from motion_puzzle.model_1d import Generator_1d
-
-from tmr.src.config import read_config
-from tmr.src.load import load_model_from_cfg
-from hydra.utils import instantiate
-from tmr.src.data.collate import collate_x_dict
-from tmr.src.model.tmr import get_score_matrix
 
 from os.path import join as pjoin
 from mld.models.architectures import (
@@ -163,10 +155,10 @@ class MLD(BaseModel):
 
         if self.is_test:
             nclass = 47
-            dict_path = "/work/vig/zhonglei/stylized_motion/dataset_all/100STYLE_name_dict_Filter.txt"
+            dict_path = "./dataset/100STYLE_name_dict_Filter.txt"
         else:
             nclass = 100
-            dict_path = "/work/vig/zhonglei/stylized_motion/dataset_all/100STYLE_name_dict.txt"
+            dict_path = "./dataset//100STYLE_name_dict.txt"
 
         self.label_to_motion = build_dict_from_txt(dict_path)
 
@@ -179,7 +171,6 @@ class MLD(BaseModel):
 
             self.mean = torch.from_numpy(self.mean).cuda()
             self.std = torch.from_numpy(self.std).cuda()
-            self._get_tmr_evaluator()
      
         try:
             self.vae_type = cfg.model.vae_type
@@ -209,8 +200,6 @@ class MLD(BaseModel):
                 for p in self.style_function.parameters():
                     p.requires_grad = False
 
-                # for p in self.denoiser.style_encoder.parameters():
-                #     p.requires_grad = False
 
             elif self.vae_type == "no":
                 pass
@@ -266,26 +255,6 @@ class MLD(BaseModel):
         if self.condition in ['text', 'text_uncond']:
             self.feats2joints_wo_norm = datamodule.feats2joints_wo_norm
             self.feats2joints = datamodule.feats2joints
-
-    @hydra.main(version_base=None, config_path="configs", config_name="text_motion_sim")
-    def _get_tmr_evaluator(self):
-        run_dir = "/work/vig/zhonglei/stylized_motion/motion-latent-diffusion/tmr/models/tmr_humanml3d_guoh3dfeats"
-        ckpt_name = "last"
-        device="cuda"
-
-        
-        cfg = read_config(run_dir)
-        self.tmr_text_model = instantiate(cfg.data.text_to_token_emb, device=device)
-        self.tmr_motion_model = load_model_from_cfg(cfg, ckpt_name, eval_mode=True, device=device)
-        self.tmr_normalizer = instantiate(cfg.data.motion_loader.normalizer)
-
-        self.tmr_motion_model.eval()
-
-        # for p in self.tmr_text_model.parameters():
-        #     p.requires_grad = False
-
-        for p in self.tmr_motion_model.parameters():
-            p.requires_grad = False
 
     def _get_t2m_evaluator(self, cfg):
         """
@@ -531,119 +500,6 @@ class MLD(BaseModel):
             
         # set timesteps
 
-    @torch.no_grad()
-    def mst_forward(self, batch, latents, is_return_feat=False):
-        texts = batch["text"]
-        lengths = batch["length"]
-        # motion = batch["motion"].cuda().float()        
-        print("batch",batch)
-        style_motion = batch["reference_motion"]
-        style_motion = style_motion[:,:480,:]
-
-        start_step=20
-
-        extra_step_kwargs = {}
-        if "eta" in set(
-                inspect.signature(self.scheduler.step).parameters.keys()):
-            extra_step_kwargs["eta"] = self.cfg.model.scheduler.eta
-
-        self.scheduler.set_timesteps(
-            self.cfg.model.scheduler.num_inference_timesteps)
-        timesteps = self.scheduler.timesteps.cuda()
-
-        #V4
-
-        texts = batch["text"]
-        batch = len(texts)
-        style_motion = style_motion.expand(batch,-1,-1)
-        empty_ref = torch.zeros_like(style_motion)
-
-        
-        # uncond_tokens = [texts[i] for i in range(len(texts))]
-        if self.guidance_mode == 'v0':
-            uncond_tokens = [""] * len(texts)
-            if self.condition == 'text':
-                uncond_tokens.extend(texts)
-            elif self.condition == 'text_uncond':
-                uncond_tokens.extend(uncond_tokens)
-            texts = uncond_tokens
-            text_emb = self.text_encoder(texts)
-
-            style_motion = style_motion.cuda()
-
-        elif self.guidance_mode == 'v4':
-            uncond_tokens = [""] * len(texts)
-            uncond_tokens2 = [""] * len(texts)
-            if self.condition == 'text':
-                uncond_tokens.extend(texts)
-                uncond_tokens.extend(uncond_tokens2)
-
-            texts = uncond_tokens
-            text_emb = self.text_encoder(texts)
-
-            style_motion = torch.cat((empty_ref,empty_ref,style_motion),dim=0).cuda()
-
-        for i in tqdm(range(start_step, self.cfg.model.scheduler.num_inference_timesteps)):
-            t = timesteps[i]
-            current_t = int(t.cpu().numpy())-1
-
-            if self.guidance_mode == 'v4':
-                latent_model_input = (torch.cat(
-                    [latents] *
-                    3) if self.do_classifier_free_guidance else latents)
-            elif self.guidance_mode == 'v0':
-                latent_model_input = (torch.cat(
-                    [latents] *
-                    2) if self.do_classifier_free_guidance else latents)
-                
-            noise_pred = self.denoiser(
-                    sample=latent_model_input,
-                    timestep=t.cuda(),
-                    encoder_hidden_states=text_emb,
-                    reference=style_motion,
-                    lengths=lengths,
-                )[0]
-
-            if self.guidance_mode == 'v0':
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                if self.is_guidance and current_t < 200:
-                    
-                    with torch.set_grad_enabled(True):
-                        noise_pred = self.guide(noise_pred, t, latents, lengths, style_motion,n_guide_steps=5,scale=0.4)
-
-            elif self.guidance_mode == 'v4':
-
-                noise_pred_uncond,noise_pred_text,noise_pred_style = noise_pred.chunk(3)
-                delat_pre_text = noise_pred_text - noise_pred_uncond
-                delat_pre_style = noise_pred_style - noise_pred_uncond
-
-                noise_pred = noise_pred_uncond + self.guidance_scale_style * delat_pre_style
-                
-                if self.is_guidance and current_t < 150:
-                    with torch.set_grad_enabled(True):
-                        noise_pred = self.guide(noise_pred, t, latents, lengths, style_motion,n_guide_steps=10,scale=0.4)
-                
-                noise_pred = noise_pred + self.guidance_scale * delat_pre_text
-
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-
-        latents = latents.permute(1, 0, 2)
-
-        if is_return_feat:
-            return latents
-        else:
-
-            feats_rst = self.vae.decode(latents, lengths)
-            joints = self.feats2joints(feats_rst.detach().cpu())
-            return remove_padding(joints, lengths)
-
-    def feats2joints_f(self,feats_rst):
-        joints = self.feats2joints(feats_rst.detach().cpu())
-
-        return joints
-
     def forward(self, batch,feature="False"):
         texts = batch["text"]
         lengths = batch["length"]
@@ -656,7 +512,7 @@ class MLD(BaseModel):
         if self.cfg.TEST.COUNT_TIME:
             self.starttime = time.time()
 
-        if self.stage in ['diffusion', 'vae_diffusion',"cycle_diffusion","cycle_diffusion_tri"]:
+        if self.stage in ['diffusion', 'vae_diffusion',"cycle_diffusion"]:
             # diffusion reverse
             if self.do_classifier_free_guidance:
                 if self.guidance_mode == 'v0':
@@ -668,59 +524,6 @@ class MLD(BaseModel):
                     texts = uncond_tokens
                     text_emb = self.text_encoder(texts)
                     z = self._diffusion_reverse(text_emb, lengths,feats_ref)
-                elif self.guidance_mode == 'v1':
-                    batch = len(texts)
-                    feats_ref = feats_ref.expand(batch,-1,-1)
-                    empty_ref = torch.zeros_like(feats_ref)
-
-                    feats_ref = torch.cat((empty_ref,feats_ref),dim=0)
-                    uncond_tokens = [""] * len(texts)
-                    if self.condition == 'text':
-                        uncond_tokens.extend(texts)
-                    elif self.condition == 'text_uncond':
-                        uncond_tokens.extend(uncond_tokens)
-                    texts = uncond_tokens
-                    text_emb = self.text_encoder(texts)
-                    z = self._diffusion_reverse(text_emb, lengths,feats_ref)
-
-                elif self.guidance_mode == 'v2':
-                    batch = len(texts)
-                    feats_ref = feats_ref.expand(batch,-1,-1)
-                    empty_ref = torch.zeros_like(feats_ref)
-
-                    feats_ref = torch.cat((empty_ref,empty_ref,feats_ref),dim=0)
-                    # uncond_tokens = [texts[i] for i in range(len(texts))]
-                    uncond_tokens = [""] * len(texts)
-                    uncond_tokens2 = [""] * len(texts)
-                    if self.condition == 'text':
-                        uncond_tokens.extend(texts)
-                        uncond_tokens.extend(uncond_tokens2)
-
-                    elif self.condition == 'text_uncond':
-                        uncond_tokens.extend(uncond_tokens)
-                    texts = uncond_tokens
-                    text_emb = self.text_encoder(texts)
-     
-                    z = self._diffusion_reverse(text_emb, lengths,feats_ref,is_v2 = True)
-
-                elif self.guidance_mode == 'v3':
-                    batch = len(texts)
-                    feats_ref = feats_ref.expand(batch,-1,-1)
-                    empty_ref = torch.zeros_like(feats_ref)
-
-                    feats_ref = torch.cat((empty_ref,empty_ref,feats_ref),dim=0)
-                    # uncond_tokens = [texts[i] for i in range(len(texts))]
-                    uncond_tokens = [""] * len(texts)
-                    uncond_tokens2 = [""] * len(texts)
-                    if self.condition == 'text':
-                        uncond_tokens.extend(texts)
-                        uncond_tokens.extend(texts)
-                    elif self.condition == 'text_uncond':
-                        uncond_tokens.extend(uncond_tokens)
-                    texts = uncond_tokens
-                    text_emb = self.text_encoder(texts)
-     
-                    z = self._diffusion_reverse(text_emb, lengths,feats_ref,is_v2 = True, is_v4=False)
                 
                 elif self.guidance_mode == 'v4':
                     batch = len(texts)
@@ -739,48 +542,7 @@ class MLD(BaseModel):
                     texts = uncond_tokens
                     text_emb = self.text_encoder(texts)
      
-                    z = self._diffusion_reverse(text_emb, lengths,feats_ref,is_v2 = True, is_v4=True)
-                elif self.guidance_mode == 'v5':
-                    #V5:f(z_t,t,Cx) + + alpha[f(z_t,t,Tx,Cx) - f(z_t,t,Cx] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)]
-                    batch = len(texts)
-                    feats_ref = feats_ref.expand(batch,-1,-1)
-                    empty_ref = torch.zeros_like(feats_ref)
-
-                    feats_ref = torch.cat((feats_ref,feats_ref,empty_ref),dim=0)
-                    # uncond_tokens = [texts[i] for i in range(len(texts))]
-                    uncond_tokens = [""] * len(texts)
-                    uncond_tokens2 = [""] * len(texts)
-                    if self.condition == 'text':
-                        uncond_tokens.extend(texts)
-                        uncond_tokens.extend(texts)
-                    elif self.condition == 'text_uncond':
-                        uncond_tokens.extend(uncond_tokens)
-                    texts = uncond_tokens
-                    text_emb = self.text_encoder(texts)
-     
-                    z = self._diffusion_reverse(text_emb, lengths,feats_ref,is_v2 = True, is_v5=True)
-                elif self.guidance_mode == 'v6':
-                    #V6:f(z_t,t)  + alpha[f(z_t,t,Tx,Cx) - f(z_t,t,Cx] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)]
-                    batch = len(texts)
-                    feats_ref = feats_ref.expand(batch,-1,-1)
-                    empty_ref = torch.zeros_like(feats_ref)
-
-                    feats_ref = torch.cat((empty_ref,feats_ref,empty_ref,feats_ref),dim=0)
-                    # uncond_tokens = [texts[i] for i in range(len(texts))]
-                    uncond_tokens = [""] * len(texts)
-                    uncond_tokens2 = [""] * len(texts)
-                    if self.condition == 'text':
-                        uncond_tokens.extend(texts)
-                        uncond_tokens.extend(texts)
-                        uncond_tokens.extend(uncond_tokens2)
-                    elif self.condition == 'text_uncond':
-                        uncond_tokens.extend(uncond_tokens)
-                    texts = uncond_tokens
-                    text_emb = self.text_encoder(texts)
-     
-                    z = self._diffusion_reverse(text_emb, lengths,feats_ref,is_v2 = True, is_v6=True)
-
-
+                    z = self._diffusion_reverse(text_emb, lengths,feats_ref, is_v4=True)
 
         elif self.stage in ['vae']:
             motions = batch['motion']
@@ -815,10 +577,11 @@ class MLD(BaseModel):
                         f.write('\n')
 
         joints = self.feats2joints(feats_rst.detach().cpu())
-        if feature == "False":
-            return remove_padding(joints, lengths)
+
+        if feature == "True":
+            return remove_padding(joints, lengths),feats_rst.detach().cpu()
         else:
-            return feats_rst.detach().cpu()
+            return remove_padding(joints, lengths)
 
     def gen_from_latent(self, batch):
         z = batch["latent"]
@@ -921,7 +684,7 @@ class MLD(BaseModel):
         return latent_list,time_list
 
 
-    def _diffusion_reverse(self, encoder_hidden_states, lengths=None,reference_motion=None, is_return_noise =False, is_v2 = False,is_v4 = False,is_v5 = False,is_v6 = False,style_text_emb=None):
+    def _diffusion_reverse(self, encoder_hidden_states, lengths=None,reference_motion=None,is_v4 = False):
         # init latents
         bsz = encoder_hidden_states.shape[0]
         if self.do_classifier_free_guidance and is_v2 == False:
@@ -958,24 +721,19 @@ class MLD(BaseModel):
             extra_step_kwargs["eta"] = self.cfg.model.scheduler.eta
 
         # reverse
-        delat_pre_style_return = 0
+        # delat_pre_style_return = 0
         for i, t in enumerate(timesteps):
             current_t = int(t.cpu().numpy())-1
             # expand the latents if we are doing classifier free guidance
-            if is_v2 == False:
+            if is_v4 == False:
                 latent_model_input = (torch.cat(
                     [latents] *
                     2) if self.do_classifier_free_guidance else latents)
-            
-            elif is_v6 == True:
-                latent_model_input = (torch.cat(
-                    [latents] *
-                    4) if self.do_classifier_free_guidance else latents)
             else:
                 latent_model_input = (torch.cat(
                     [latents] *
                     3) if self.do_classifier_free_guidance else latents)
-            # lengths_reverse = (lengths * 2 if self.do_classifier_free_guidance else lengths)
+
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
             # predict the noise residual
 
@@ -986,8 +744,7 @@ class MLD(BaseModel):
                     encoder_hidden_states=encoder_hidden_states,
                     lengths=lengths,
                 )[0]
-            elif self.is_control and self.is_style_text == False:
-
+            elif self.is_control:
                 noise_pred = self.denoiser(
                     sample=latent_model_input,
                     timestep=t,
@@ -995,18 +752,9 @@ class MLD(BaseModel):
                     lengths=lengths,
                     reference=reference_motion,
                 )[0]
-            elif self.is_control and self.is_style_text and style_text_emb is not None:
-                noise_pred = self.denoiser(
-                    sample=latent_model_input,
-                    timestep=t,
-                    encoder_hidden_states=encoder_hidden_states,
-                    lengths=lengths,
-                    style_text_emb = style_text_emb,
-                    # reference=reference_motion,
-                )[0]
-
+            
             # perform guidance
-            if self.do_classifier_free_guidance and is_v2 == False and is_v4 == False:
+            if self.do_classifier_free_guidance and is_v4 == False:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                 
@@ -1014,97 +762,36 @@ class MLD(BaseModel):
                     with torch.set_grad_enabled(True):
                         noise_pred = self.guide(noise_pred, t, latents, lengths,reference_motion)
 
-            
-            elif self.do_classifier_free_guidance and is_v2 == True and is_v4 == False and is_v5 == False and is_v6 == False:
-                noise_pred_uncond,noise_pred_text,noise_pred_style = noise_pred.chunk(3)
-                delat_pre_text = noise_pred_text - noise_pred_uncond
-                delat_pre_style = noise_pred_style - noise_pred_uncond
-                # noise_pred = noise_pred_uncond + self.guidance_scale * delat_pre_text + self.guidance_scale_style * delat_pre_style #self.get_prependicualr_component(delat_pre_style,delat_pre_text)
-                
-                noise_pred = noise_pred_uncond + self.guidance_scale_style * delat_pre_style
-
-                if self.is_style_text == False:
-                    _,_,reference = reference_motion.chunk(3)
-
-                if self.is_guidance and current_t < 300:
-                    with torch.set_grad_enabled(True):
-                        noise_pred = self.guide(noise_pred, t, latents, lengths,reference)
-                
-                # delat_pre_style_m = noise_pred - noise_pred_uncond
-                noise_pred = noise_pred + self.guidance_scale * delat_pre_text
-
-                # noise_pred = noise_pred_uncond + self.guidance_scale * delat_pre_text + self.get_prependicualr_component(delat_pre_style_m, self.guidance_scale * delat_pre_text)
-
-            elif self.do_classifier_free_guidance and is_v2 == True and is_v4 == True:
+            elif self.do_classifier_free_guidance and is_v4 == True:
                 noise_pred_uncond,noise_pred_text,noise_pred_style_text = noise_pred.chunk(3)
                 delat_pre_text = noise_pred_text - noise_pred_uncond
                 delat_pre_style = noise_pred_style_text - noise_pred_text
-                # modify_style = self.get_prependicualr_component(delat_pre_style, delat_pre_text)
                 noise_pred = noise_pred_uncond +  self.guidance_scale_style * delat_pre_style
-                # noise_pred = noise_pred_uncond +  self.guidance_scale * delat_pre_text
 
-                if self.is_style_text == False:
-                    _,_,reference = reference_motion.chunk(3)
+                _,_,reference = reference_motion.chunk(3)
 
-                if current_t <= 1000:
-                    noise_pred = noise_pred + self.guidance_scale_style * delat_pre_style
+                noise_pred = noise_pred + self.guidance_scale_style * delat_pre_style
                 
                 if self.is_guidance and current_t < 300:
                     with torch.set_grad_enabled(True):
-                        # noise_pred = noise_pred + self.guidance_scale_style * delat_pre_style
-                        # noise_pred = noise_pred_uncond +  self.guidance_scale_style * delat_pre_style
                         noise_pred = self.guide(noise_pred, t, latents, lengths,reference)
 
-                # delat_pre_style_ = noise_pred - noise_pred_uncond
-                # delat_pre_style_return = noise_pred - noise_pred_uncond
                 noise_pred = noise_pred + self.guidance_scale * delat_pre_text
 
-                
-                          
-            # elif self.do_classifier_free_guidance and is_v2 == True and is_v5 == True:
-            #     noise_pred_style_und, noise_pred_style_text, noise_pred_text = noise_pred.chunk(3)
-            #     delat_pre_text = noise_pred_style_text - noise_pred_style_und
-            #     delat_pre_style = noise_pred_style_text - noise_pred_text
-            #     noise_pred = noise_pred_style_und + self.guidance_scale * delat_pre_text #+ self.guidance_scale_style * delat_pre_style
-            
-            # elif self.do_classifier_free_guidance and is_v2 == True and is_v6 == True:
-            #     noise_pred_uncond, noise_pred_style_text, noise_pred_text,noise_pred_style = noise_pred.chunk(4)
-            #     delat_pre_text = noise_pred_style_text - noise_pred_style
-            #     delat_pre_style = noise_pred_style_text - noise_pred_text
-            #     noise_pred = noise_pred_uncond + self.guidance_scale * delat_pre_text + self.guidance_scale_style * delat_pre_style
-
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-
-        
-        if is_return_noise:
-                return delat_pre_style
-        
-
+ 
         # [batch_size, 1, latent_dim] -> [1, batch_size, latent_dim]
         latents = latents.permute(1, 0, 2)
         return latents
 
-    
-    def get_prependicualr_component(self,x, y):
-        assert x.shape == y.shape
-        return x - ((torch.mul(x, y).sum())/(torch.norm(y)**2)) * y
-
-    def get_parallel_component(self, x, y):
-        assert x.shape == y.shape
-        return ((torch.mul(x, y).sum())/(torch.norm(y)**2)) * y
-
     def guide(self,noise_pred, timestep, latents,lengths,reference_motion,n_guide_steps=5,scale=0.2):
         #compute pred_original_sample -> f_theta(x_t, t) or x_0
-        # latents = latents.requires_grad_(True)
         noise_pred = noise_pred.requires_grad_(True)
-        # reference_motion = reference_motion.requires_grad_(True)#.clone().detach()
         for _ in range(n_guide_steps):
             loss, grad = self.gradients(noise_pred,latents,timestep,reference_motion,lengths)
-            # grad = model_variance * grad
             noise_pred = noise_pred - scale * grad
         noise_pred = noise_pred.detach().requires_grad_(True)
-        # print("-----------------------------------")
-        return noise_pred#.detach()
+        return noise_pred
     
 
     def gradients(self,noise_pred,latents,timestep,reference_motion,lengths):
@@ -1119,9 +806,7 @@ class MLD(BaseModel):
             style_pred = self.style_function(joints,stage="intermediate") 
             style_reference = self.style_function(reference_motion,stage="intermediate") 
             loss = 0.0
-            # for pred_feat, target_feat in zip(style_pred, style_reference):  
-            #     loss += F.l1_loss(pred_feat[0], target_feat[0], reduction='none') # Mean Absolute Error for mean
-            #     loss += F.l1_loss(pred_feat[1], target_feat[1], reduction='none')
+
             weights = [0.0, 2.0] 
             for i, (pred_feat, target_feat) in enumerate(zip(style_pred, style_reference)):
                 loss += weights[i] * F.l1_loss(pred_feat[0], target_feat[0], reduction='none')
@@ -1134,19 +819,15 @@ class MLD(BaseModel):
             grad[..., 0] = 0
         
         noise_pred.detach()
-        # latents.detach()
     
         return loss_sum, grad
 
 
     def get_clean_sample(self,noise_pred,latents,timestep):
-        # prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
-        alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
-        # alpha_prod_t_prev = self.scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
-        beta_prod_t = 1 - alpha_prod_t
 
+        alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
+        beta_prod_t = 1 - alpha_prod_t
         pred_original_sample = (latents - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
-        # pred_original_sample = pred_original_sample.permute(1, 0, 2).contiguous()
     
         return pred_original_sample
 
@@ -1943,7 +1624,6 @@ class MLD(BaseModel):
                 reference_motion = torch.cat((empty_ref,empty_ref,reference_motion),dim=0)
                     # uncond_tokens = [texts[i] for i in range(len(texts))]
                 uncond_tokens = [""] * len(texts)
-                # uncond_tokens2 = [""] * len(texts)
                 if self.condition == 'text':
                     uncond_tokens.extend(texts)
                     uncond_tokens.extend(texts)
@@ -1964,46 +1644,7 @@ class MLD(BaseModel):
                     z = self._diffusion_reverse(text_emb, lengths,reference_motion,is_v2 = True,is_v4 = True,style_text_emb=style_text_emb)
                 else:
                     z = self._diffusion_reverse(text_emb, lengths,reference_motion,is_v2 = True,is_v4 = True)
-            # elif self.guidance_mode == 'v5':
-            #     #V5:f(z_t,t,Cx) + + alpha[f(z_t,t,Tx,Cx) - f(z_t,t,Cx] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)]
-            #     batch_size = len(texts)
-            #     reference_motion = reference_motion.expand(batch_size,-1,-1)
-            #     empty_ref = torch.zeros_like(reference_motion)
 
-            #     reference_motion = torch.cat((reference_motion,reference_motion,empty_ref),dim=0)
-            #         # uncond_tokens = [texts[i] for i in range(len(texts))]
-            #     uncond_tokens = [""] * len(texts)
-            #     uncond_tokens2 = [""] * len(texts)
-            #     if self.condition == 'text':
-            #         uncond_tokens.extend(texts)
-            #         uncond_tokens.extend(texts)
-            #     elif self.condition == 'text_uncond':
-            #         uncond_tokens.extend(uncond_tokens)
-            #     texts = uncond_tokens
-            #     text_emb = self.text_encoder(texts)
-     
-            #     z = self._diffusion_reverse(text_emb, lengths,reference_motion,is_v2 = True, is_v5=True)
-            
-            # elif self.guidance_mode == 'v6':
-            #     #V6:f(z_t,t)  + alpha[f(z_t,t,Tx,Cx) - f(z_t,t,Cx] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)]
-
-            #     batch_size = len(texts)
-            #     reference_motion = reference_motion.expand(batch_size,-1,-1)
-            #     empty_ref = torch.zeros_like(reference_motion)
-
-            #     reference_motion = torch.cat((empty_ref, reference_motion,empty_ref,reference_motion),dim=0)
-            #         # uncond_tokens = [texts[i] for i in range(len(texts))]
-            #     uncond_tokens = [""] * len(texts)
-            #     uncond_tokens2 = [""] * len(texts)
-            #     if self.condition == 'text':
-            #         uncond_tokens.extend(texts)
-            #         uncond_tokens.extend(texts)
-            #         uncond_tokens.extend(uncond_tokens2)
-            #     elif self.condition == 'text_uncond':
-            #         uncond_tokens.extend(uncond_tokens)
-            #     texts = uncond_tokens
-            #     text_emb = self.text_encoder(texts)
-            #     z = self._diffusion_reverse(text_emb, lengths,reference_motion,is_v2 = True, is_v6=True)
 
         elif self.stage in ['vae']:
             if self.vae_type in ["mld", "vposert", "actor"]:
@@ -2344,12 +1985,10 @@ class MLD(BaseModel):
                     rs_set["lat_t"] = rs_set["lat_m"]
                 elif self.stage == "diffusion":
                     rs_set = self.train_diffusion_forward(batch)
-                # elif self.stage == "motion_clip":
-                #     rs_set = self.train_motion_clip(batch)
+                
                 elif self.stage == "cycle_diffusion":
                     rs_set = self.train_cycle_diffusion_forward(batch)
-                # elif self.stage == "cycle_diffusion_tri":
-                #     rs_set = self.train_cycle_diffusion_forward_tri(batch)
+                
                 elif self.stage == "vae_diffusion":
                     vae_rs_set = self.train_vae_forward(batch)
                     diff_rs_set = self.train_diffusion_forward(batch)
@@ -2380,9 +2019,7 @@ class MLD(BaseModel):
                     # use t2m evaluators
                     # if self.is_puzzle == False:
                     rs_set = self.t2m_eval(batch)
-                    # else:
-                    #     rs_set = self.t2m_eval_puzzle(batch)
-                        # rs_set = self.t2m_eval_puzzle_mst(batch)
+                 
                 elif self.condition == 'action':
                     # use a2m evaluators
                     rs_set = self.a2m_eval(batch)
@@ -2419,42 +2056,11 @@ class MLD(BaseModel):
                             batch["length"],
                             rs_set["predicted"],
                             rs_set["label"],
-                            # rs_set["lat_tmr_m"],
-                            # rs_set["lat_tmr_t"],
+                       
                             rs_set["joints_rst"],
                             rs_set["inference_time"],
-
                         )
-                    elif metric == "TM2TMetrics_MST":
-                        getattr(self, metric).update(
-                            # lat_t, latent encoded from diffusion-based text
-                            # lat_rm, latent encoded from reconstructed motion
-                            # lat_m, latent encoded from gt motion
-                            # rs_set['lat_t'], rs_set['lat_rm'], rs_set['lat_m'], batch["length"])
-                            # rs_set["lat_t"],
-                            rs_set["lat_rm"],
-                            rs_set["lat_m"],
-                            batch["length"],
-                            rs_set["predicted"],
-                            rs_set["label"],
-                            
-                            rs_set["joints_rst"],
-
-                        )
-                    # elif metric == "TM2TMetrics_Walk":
-                    #     getattr(self, metric).update(
-                    #         # lat_t, latent encoded from diffusion-based text
-                    #         # lat_rm, latent encoded from reconstructed motion
-                    #         # lat_m, latent encoded from gt motion
-                    #         # rs_set['lat_t'], rs_set['lat_rm'], rs_set['lat_m'], batch["length"])
-                    #         # rs_set["lat_t"],
-                    #         rs_set["lat_rm"],
-                    #         rs_set["lat_m"],
-                    #         batch["length"],
-                    #         rs_set["predicted"],
-                    #         rs_set["label"],
-
-
+                
                         # )
                     elif metric == "UncondMetrics":
                         getattr(self, metric).update(
@@ -2469,20 +2075,7 @@ class MLD(BaseModel):
                     elif metric == "MMMetrics":
                         getattr(self, metric).update(rs_set["lat_rm"].unsqueeze(0),
                                                     batch["length"])
-                    # elif metric == "HUMANACTMetrics":
-                    #     getattr(self, metric).update(rs_set["m_action"],
-                    #                                 rs_set["joints_eval_rst"],
-                    #                                 rs_set["joints_eval_ref"],
-                    #                                 rs_set["m_lens"])
-                    # elif metric == "UESTCMetrics":
-                    #     # the stgcn model expects rotations only
-                    #     getattr(self, metric).update(
-                    #         rs_set["m_action"],
-                    #         rs_set["m_rst"].view(*rs_set["m_rst"].shape[:-1], 6,
-                    #                             25).permute(0, 3, 2, 1)[:, :-1],
-                    #         rs_set["m_ref"].view(*rs_set["m_ref"].shape[:-1], 6,
-                    #                             25).permute(0, 3, 2, 1)[:, :-1],
-                    #         rs_set["m_lens"])
+                   
                     else:
                         raise TypeError(f"Not support this metric {metric}")
 
@@ -2535,65 +2128,11 @@ class MLD(BaseModel):
                             rs_set["predicted"],
                             rs_set["label"],
 
-                            # rs_set["lat_tmr_m"],
-                            # rs_set["lat_tmr_t"],
                             rs_set["joints_rst"],
                             rs_set["inference_time"],
 
                         )
-                    # elif metric == "TM2TMetrics_Walk":
-                        # getattr(self, metric).update(
-                        #     # lat_t, latent encoded from diffusion-based text
-                        #     # lat_rm, latent encoded from reconstructed motion
-                        #     # lat_m, latent encoded from gt motion
-                        #     # rs_set['lat_t'], rs_set['lat_rm'], rs_set['lat_m'], batch["length"])
-                        #     # rs_set["lat_t"],
-                        #     rs_set["lat_rm"],
-                        #     rs_set["lat_m"],
-                        #     batch["length"],
-                        #     rs_set["predicted"],
-                        #     rs_set["label"]
-                        # )
-
-                    elif metric == "TM2TMetrics_MST":
-                        getattr(self, metric).update(
-                            # lat_t, latent encoded from diffusion-based text
-                            # lat_rm, latent encoded from reconstructed motion
-                            # lat_m, latent encoded from gt motion
-                            # rs_set['lat_t'], rs_set['lat_rm'], rs_set['lat_m'], batch["length"])
-                            # rs_set["lat_t"],
-                            rs_set["lat_rm"],
-                            rs_set["lat_m"],
-                            batch["length"],
-                            rs_set["predicted"],
-                            rs_set["label"],
-                            
-                            rs_set["joints_rst"],
-
-                        )
-                    # elif metric == "TM2TMetrics_MST_XIA":
-                    #     getattr(self, metric).update(
-                    #         # lat_t, latent encoded from diffusion-based text
-                    #         # lat_rm, latent encoded from reconstructed motion
-                    #         # lat_m, latent encoded from gt motion
-                    #         rs_set["lat_rm"],
-                    #         rs_set["lat_m"],
-                    #         batch["length"],
-                    #         rs_set["predicted"],
-                    #         rs_set["label"],
-
-                    #         rs_set["predicted_c"],
-                    #         rs_set["label_c"],
-                            
-                    #         rs_set["joints_rst"],
-
-                    #     )
-                    # elif metric == "UncondMetrics":
-                    #     getattr(self, metric).update(
-                    #         recmotion_embeddings=rs_set["lat_rm"],
-                    #         gtmotion_embeddings=rs_set["lat_m"],
-                    #         lengths=batch["length"],
-                    #     )
+                  
                     elif metric == "MRMetrics":
                         getattr(self, metric).update(rs_set["joints_rst"],
                                                     rs_set["joints_ref"],
@@ -2607,15 +2146,6 @@ class MLD(BaseModel):
                                                     rs_set["joints_eval_rst"],
                                                     rs_set["joints_eval_ref"],
                                                     rs_set["m_lens"])
-                    elif metric == "UESTCMetrics":
-                        # the stgcn model expects rotations only
-                        getattr(self, metric).update(
-                            rs_set["m_action"],
-                            rs_set["m_rst"].view(*rs_set["m_rst"].shape[:-1], 6,
-                                                25).permute(0, 3, 2, 1)[:, :-1],
-                            rs_set["m_ref"].view(*rs_set["m_ref"].shape[:-1], 6,
-                                                25).permute(0, 3, 2, 1)[:, :-1],
-                            rs_set["m_lens"])
                     else:
                         raise TypeError(f"Not support this metric {metric}")
 

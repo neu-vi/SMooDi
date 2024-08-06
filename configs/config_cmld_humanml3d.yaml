@@ -3,22 +3,13 @@
 ####################################
 
 # Experiment name, more details in Section 'Experiment Name Explanation'
-NAME: CMLD_100STYLE_VAE
-# NAME: CMLD_MOCAP_MCLIP_M_WO_KL #
-# NAME: VAE_100STYLE_HumanML3D #
+NAME: CMLD_100STYLE_W_STYLETEXT_CYCLE100_V1_01
 
 #MLD: f(z_t,t) + alpha[f(z_t,t,Tx) - f(z_t,t)]
 
 #Current;v0: f(z_t,t,Cx) + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Cx)] good
-#V1:f(z_t,t) + alpha[f(z_t,t,Cx,Tx) - f(z_t,t)] good
-#V2:f(z_t,t) + alpha[f(z_t,t,Cx) - f(z_t,t)] + alpha[f(z_t,t,Tx) - f(z_t,t] good
-#V3:f(z_t,t) + + alpha[f(z_t,t,Tx) - f(z_t,t] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t)] 
 #V4:f(z_t,t) + + alpha[f(z_t,t,Tx) - f(z_t,t] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)] 
 
-#V5:f(z_t,t,Cx) + alpha[f(z_t,t,Tx,Cx) - f(z_t,t,Cx] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)]
-#V6:f(z_t,t)  + alpha[f(z_t,t,Tx,Cx) - f(z_t,t,Cx] + alpha[f(z_t,t,Cx,Tx) - f(z_t,t,Tx)]
-
-#CMLD_100STYLE_W_STYLETEXT #_JUST_STYLEINPUT #_FRZSE
 # NAME: Test
 # Debug mode. Set to True will enter the debug mode, then the program will
 # 1. use a tiny dataset for trianing and evaluation
@@ -52,9 +43,8 @@ TRAIN:
   PRETRAINED_VAE: ./checkpoints/mld_humanml3d_checkpoint/1222_mld_humanml3d_FID041.ckpt # vae model path
   PRETRAINED_MLD: ./checkpoints/mld_humanml3d_checkpoint/1222_mld_humanml3d_FID041.ckpt # vae model path
 
-  # PRETRAINED_STYLE: ./experiments/style_encoder_mocap500.pt
-  PRETRAINED_STYLE: ./experiments/style_encoder_robust47_100.pt
-  # PRETRAINED_STYLE: ./experiments/style_encoder_filter200.pt 
+  PRETRAINED_STYLE: ./experiments/style_classifier.pt
+
   OPTIM:
     TYPE: AdamW # Optimizer type
     LR: 1e-4 # Learning rate
@@ -76,10 +66,7 @@ EVAL:
 # The following are testing settings
 #####################################
 TEST:
-  # CHECKPOINTS: ./checkpoints/mld_humanml3d_checkpoint/1222_mld_humanml3d_FID041.ckpt # Pretrained model path
-  # CHECKPOINTS: ./experiments/mld/CMLD_MOCAP_W_STYLETEXT_TEST/checkpoints/epoch=49-v2.ckpt # Pretrained model path
-  CHECKPOINTS: ./experiments/mld/CMLD_100STYLE_W_STYLETEXT_CYCLE100_V1_01/checkpoints/epoch=49.ckpt # Pretrained model path
-  # CHECKPOINTS: ./experiments/mld/CMLD_100STYLE_VAE/checkpoints/epoch=99.ckpt # Pretrained model path
+  CHECKPOINTS: ./experiments/SMooDi.ckpt # Pretrained model path
 
   DATASETS: ['humanml3d'] # training datasets
   SPLIT: test
