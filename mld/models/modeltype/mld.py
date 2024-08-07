@@ -934,22 +934,6 @@ class MLD(BaseModel):
         noise_x, noise_pred_x,noisy_latents_x = self._cycle_recon_process(latents_x,timesteps, encoder_hidden_states_x, lengths_x, reference_motion_x)
         noise_y, noise_pred_y,noisy_latents_y = self._cycle_recon_process(latents_y,timesteps, encoder_hidden_states_y, lengths_y, reference_motion_y)
 
-        # if self.is_style_recon:
-        #     style_emb = self.denoiser.style_encode(reference_motion_x)
-        #     # noisy_latents_x = self.noise_scheduler.add_noise(latents_x.clone(), noise_x,timesteps)
-        #     self.scheduler.alphas_cumprod = self.scheduler.alphas_cumprod.cuda()
-        #     clean_sample = self.get_clean_sample(noise_pred_x,noisy_latents_x,timesteps.unsqueeze(1).unsqueeze(2))
-        #     joints = self.vae.decode(clean_sample.permute(1, 0, 2).contiguous(), lengths_x)
-        #     style_emb_recon = self.denoiser.style_encode(joints)
-
-        # if self.is_guidance:
-        #     self.scheduler.set_timesteps(self.cfg.model.scheduler.num_inference_timesteps)
-        #     self.scheduler.alphas_cumprod = self.scheduler.alphas_cumprod.cuda()
-        #     with torch.enable_grad():
-        #         # noisy_latents_x = self.noise_scheduler.add_noise(latents_x.clone(), noise_x,timesteps)
-        #         noise_pred_x = self.guide(noise_pred_x, timesteps.unsqueeze(1).unsqueeze(2), noisy_latents_x, lengths_x,reference_motion_x)
-        #         noise_pred_x = self.guide(noise_pred_y, timesteps.unsqueeze(1).unsqueeze(2), noisy_latents_y, lengths_y,reference_motion_y)
-
         noise_pred_prior = 0
         noise_prior = 0
 
@@ -967,9 +951,6 @@ class MLD(BaseModel):
         if self.is_style_recon:
             n_set["style_emb"] = style_emb
             n_set["style_emb_recon"] = style_emb_recon
-
-        # if self.is_regularizer:
-        #     n_set["noise_pred_mld"] = noise_pre_mld.detach()
 
         # predict_epsilon : True
         if not self.predict_epsilon:
@@ -1040,21 +1021,7 @@ class MLD(BaseModel):
         self.scheduler.set_timesteps(self.cfg.model.scheduler.num_inference_timesteps)
 
         if self.is_tri and reference_motion_x_same is not None:
-            # style_emb = self.denoiser.style_encode(reference_motion_x)
-            # style_emb_neg = self.denoiser.style_encode(reference_motion_y)
-            # style_emb_pos = self.denoiser.style_encode(reference_motion_x_same)
-            
-
-            # empty_ref = torch.zeros_like(reference_motion_x)
-            
-            # noise_anchor = self.denoiser(
-            #     sample=x_noise,
-            #     timestep=timesteps,
-            #     encoder_hidden_states=encoder_hidden_states_x,
-            #     lengths=lengths_x,
-            #     reference=reference_motion_x,
-            #     return_dict=False,
-            # )[0]
+           
 
             noise_pred_pos = self.denoiser(
                 sample=x_noise,
@@ -1065,58 +1032,6 @@ class MLD(BaseModel):
                 return_dict=False,
             )[0]
 
-            # noise_pred_neg = self.denoiser(
-            #     sample=x_noise,
-            #     timestep=timesteps,
-            #     encoder_hidden_states=encoder_hidden_states_x,
-            #     lengths=lengths_x,
-            #     reference=reference_motion_y,
-            #     return_dict=False,
-            # )[0]
-
-            # noise_pred_uncond = self.denoiser(
-            #     sample=x_noise,
-            #     timestep=timesteps,
-            #     encoder_hidden_states=cond_emb_empty,
-            #     lengths=lengths_x,
-            #     reference=empty_ref,
-            #     return_dict=False,
-            # )[0]
-
-            # delat_pre_style = recon_x_output #- noise_pred_uncond.detach()
-            # delat_pre_style_pos = noise_pred_pos #- noise_pred_uncond.detach()
-            # delat_pre_style_neg = noise_pred_neg #- noise_pred_uncond.detach()
-
-            # style_emb = delat_pre_style.squeeze()
-            # style_emb_pos = delat_pre_style_pos.squeeze()
-            # style_emb_neg = delat_pre_style_neg.squeeze()
-        
-        if self.is_infoNCE and reference_motion_x_same is not None:
-            empty_ref = torch.zeros_like(reference_motion_x)
-
-            noise_pred_same = self.denoiser(
-                sample=x_noise,
-                timestep=timesteps,
-                encoder_hidden_states=encoder_hidden_states_x,
-                lengths=lengths_x,
-                reference=reference_motion_x_same,
-                return_dict=False,
-            )[0]
-
-            noise_pred_uncond = self.denoiser(
-                sample=x_noise,
-                timestep=timesteps,
-                encoder_hidden_states=encoder_hidden_states_x,
-                lengths=lengths_x,
-                reference=empty_ref,
-                return_dict=False,
-            )[0]
-
-            delat_pre_style = recon_x_output - noise_pred_uncond.detach()
-            delat_pre_style_pos = noise_pred_same - noise_pred_uncond.detach()
-
-            style_emb = delat_pre_style.squeeze()
-            style_emb_pos = delat_pre_style_pos.squeeze()
 
         extra_step_kwargs = {}
         if "eta" in set(
@@ -1154,16 +1069,7 @@ class MLD(BaseModel):
                 reference=xy_cond,
                 return_dict=False,
             )[0]
-
-        # xx_cond = self.get_clean_sample(recon_x_output, x_noise, timesteps.unsqueeze(1).unsqueeze(2))
-        # x_recon = self.vae.decode(xx_cond.permute(1, 0, 2).contiguous(), lengths_x)
-
-        # yy_cond = self.get_clean_sample(recon_y_output, y_noise, timesteps.unsqueeze(1).unsqueeze(2))
-        # y_recon = self.vae.decode(yy_cond.permute(1, 0, 2).contiguous(), lengths_y)
-
-        # yxy_prime = self.get_clean_sample(noise_yxy, y_noise, timesteps.unsqueeze(1).unsqueeze(2))
-        # yxy_cycle = self.vae.decode(yxy_prime.permute(1, 0, 2).contiguous(), lengths_y)
-        
+  
         n_set = {
             "noise_pred":recon_x_output ,
             "noise": noise_x,
@@ -1177,39 +1083,7 @@ class MLD(BaseModel):
             "noise_pred_cycle_y":noise_yxy + noise_yx_prime.detach() ,
             "noise_cycle_y":noise_y,
 
-            # "m_rst":x_recon,
-            # "m_ref":reference_motion_x,
-
-            # "m_rst_y":y_recon,
-            # "m_ref_y":reference_motion_y,
-
         }
-
-        if self.is_style_recon:
-            # for xy_cond and reference_y
-            # xy_cond_emb = self.style_function(xy_cond, stage = "intermediate")
-            # reference_motion_y_emb = self.style_function(reference_motion_y,stage="intermediate")
-            # noise_pred_pos = self.denoiser(
-            #     sample=x_noise,
-            #     timestep=timesteps,
-            #     encoder_hidden_states=encoder_hidden_states_x,
-            #     lengths=lengths_x,
-            #     reference=reference_motion_x_same,
-            #     return_dict=False,
-            # )[0]
-
-            n_set["style_emb"] = recon_x_output.detach()
-            n_set["style_emb_recon"] = noise_pred_pos
-
-
-        if self.is_infoNCE:
-            n_set["style_emb"] = style_emb
-            n_set["style_emb_pos"] = style_emb_pos
-
-        if self.is_tri:
-            # n_set["style_emb"] = style_emb
-            # n_set["style_emb_neg"] = style_emb_neg
-            n_set["style_emb_pos"] = noise_pred_pos
 
         return n_set
         # #->
@@ -1382,7 +1256,7 @@ class MLD(BaseModel):
             text_1 = batch["text_1"]
             text_2 = batch["text_2"]
 
-            if self.guidance_mode in ['v0','v1']:
+            if self.guidance_mode == "v0":
                 text_1 = [
                     "" if np.random.rand(1) < self.guidance_uncodp else i
                     for i in text_1
@@ -1392,18 +1266,7 @@ class MLD(BaseModel):
                     for i in text_2
                 ]
 
-                if self.guidance_mode == 'v1':
-                    dim0_length = feats_ref_1.shape[0]
-                    mask1 = torch.bernoulli(torch.full((dim0_length,), 1 - self.guidance_uncondp_style)).unsqueeze(1).unsqueeze(2)
-                    mask1 = mask1.expand_as(feats_ref_1).cuda()
-
-                    mask2 = torch.bernoulli(torch.full((dim0_length,), 1 - self.guidance_uncondp_style)).unsqueeze(1).unsqueeze(2)
-                    mask2 = mask2.expand_as(feats_ref_2).cuda()
-
-                    feats_ref_1 = feats_ref_1 * mask1
-                    feats_ref_2 = feats_ref_2 * mask2
-
-            elif self.guidance_mode == 'v2':
+            elif self.guidance_mode == 'v4':
                 text_1 = [i for i in text_1]
                 text_2 = [i for i in text_2]
 
@@ -1422,10 +1285,8 @@ class MLD(BaseModel):
             cond_emb_2 = self.text_encoder(text_2)
 
         # diffusion process return with noise and noise_pred
-        if self.is_recon:
-            n_set = self._cycle_diffusion_process(z_1,z_2, cond_emb_1,cond_emb_2,lengths_1,lengths_2,feats_ref_1,feats_ref_2)
-        else:
-            n_set = self._cyclenet_process(z_1,z_2, cond_emb_1,cond_emb_2,lengths_1,lengths_2,feats_ref_1,feats_ref_2)
+        n_set = self._cyclenet_process(z_1,z_2, cond_emb_1,cond_emb_2,lengths_1,lengths_2,feats_ref_1,feats_ref_2)
+
         return {**n_set}
     
     def train_diffusion_forward(self, batch):
