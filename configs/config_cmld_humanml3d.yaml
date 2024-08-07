@@ -124,7 +124,6 @@ model:
   is_train_motionclip: False
   is_control: true #true
   is_guidance: False  
-  # is_regularizer: False
   is_cycle: true #true
   is_recon: False
   is_test: true  
