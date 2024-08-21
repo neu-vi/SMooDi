@@ -121,309 +121,40 @@ def random_zero_out(data, percentage=0.4, probability=0.6,noise_probability=0.8,
 
     return data
 
-class MotionDatasetPuzzle(data.Dataset):
-    def __init__(
-        self,stage="train"
-    ):
-        # self.w_vectorizer = w_vectorizer
-        self.max_length = 20
-        self.pointer = 0
-        self.max_motion_length = 196
-        # min_motion_len = 40 if dataset_name =='t2m' else 24
-        self.min_motion_length = 40
-        # self.max_text_len = max_text_len
-        self.unit_length = 4
-
-        data_dict_1 = {}
-        id_list_1 = []
-
-        data_dict_2 = {}
-        id_list_2 = []
-
-        split_dir = "/work/vig/zhonglei/stylized_motion/dataset_all/"
-        motion_dir = "/work/vig/zhonglei/stylized_motion/dataset_all/new_joint_vecs"
-        mean = np.load("/work/vig/zhonglei/stylized_motion/dataset_all/Mean.npy")
-        std = np.load("/work/vig/zhonglei/stylized_motion/dataset_all/Std.npy")
-
-        # split_dir = "/work/vig/zhonglei/stylized_motion/dataset/mocap"
-        # motion_dir = "/work/vig/zhonglei/stylized_motion/dataset/mocap/new_joint_vecs"
-        # mean = np.load("/work/vig/zhonglei/stylized_motion/dataset/mocap/Mean.npy")
-        # std = np.load("/work/vig/zhonglei/stylized_motion/dataset/mocap/Std.npy")
-
-        # split_dir = os.path.dirname(split_file)
-        # split_base = os.path.basename(split_file).split(".")[0]
-        split_subfile_1 = os.path.join(split_dir,stage + ".txt")#_humanml
-        split_subfile_2 = os.path.join(split_dir,stage + ".txt")#_100STYLE
-
-        with cs.open(split_subfile_1, "r") as f:
-            for line in f.readlines():
-                id_list_1.append(line.strip())
-        self.id_list_1 = id_list_1
-
-        with cs.open(split_subfile_2, "r") as f:
-            for line in f.readlines():
-                id_list_2.append(line.strip())
-        self.id_list_2 = id_list_2
-
-        progress_bar = True
-        maxdata = 1e10
-
-        if progress_bar:
-            enumerator_1 = enumerate(
-                track(
-                    id_list_1,
-                    f"Loading 100STYLE {split_subfile_1.split('/')[-1].split('.')[0]}",
-                ))
-        else:
-            enumerator_1 = enumerate(id_list_1)
-
-        count = 0
-        bad_count = 0
-        new_name_list_1 = []
-        length_list_1 = []
-
-        for i, name in enumerator_1:
-            if count > maxdata:
-                break
-            motion = np.load(pjoin(motion_dir, name + ".npy"))
-            if (len(motion)) < self.min_motion_length or (len(motion) >=200):
-                bad_count += 1
-                continue
-            text_data_1 = []
-            flag = True
-
-            if flag:
-                data_dict_1[name] = {
-                    "motion": motion,
-                    "length": len(motion),
-                        # "text": text_data_1,
-                }
-                new_name_list_1.append(name)
-                length_list_1.append(len(motion))
-                count += 1 
-                           
-
-        name_list_1, length_list_1 = zip(
-            *sorted(zip(new_name_list_1, length_list_1), key=lambda x: x[1]))
-
-        if progress_bar:
-            enumerator_2 = enumerate(
-                track(
-                    id_list_2,
-                    f"Loading HumanML3D {split_subfile_2.split('/')[-1].split('.')[0]}",
-                ))
-        else:
-            enumerator_2 = enumerate(id_list_2)
-
-        count = 0
-        bad_count = 0
-        new_name_list_2 = []
-        length_list_2 = []
-
-        for i, name in enumerator_2:
-            if count > maxdata:
-                break
-            motion = np.load(pjoin(motion_dir, name + ".npy"))
-            if (len(motion)) < self.min_motion_length or (len(motion) >=200):
-                bad_count += 1
-                continue
-
-            if flag:
-                data_dict_2[name] = {
-                    "motion": motion,
-                    "length": len(motion),
-                        # "text": text_data_2,
-                }
-                new_name_list_2.append(name)
-                length_list_2.append(len(motion))
-                count += 1            
-
-        name_list_2, length_list_2 = zip(
-            *sorted(zip(new_name_list_2, length_list_2), key=lambda x: x[1]))
-
-        self.mean = mean
-        self.std = std
-        self.length_arr_1 = np.array(length_list_1)
-        self.data_dict_1 = data_dict_1
-        self.name_list_1 = name_list_1
-
-        self.length_arr_2 = np.array(length_list_2)
-        self.data_dict_2 = data_dict_2
-        self.name_list_2 = name_list_2
-
-        self.nfeats = motion.shape[1]
-        self.reset_max_len(self.max_length)
-
-    def reset_max_len(self, length):
-        assert length <= self.max_motion_length
-
-        self.pointer_1 = np.searchsorted(self.length_arr_1, length)
-        print("Pointer Pointing at %d" % self.pointer_1)
-
-        # self.pointer_2 = np.searchsorted(self.length_arr_2, length)
-        # print("Pointer Pointing at %d" % self.pointer_2)
-        self.max_length = length
-
-    def inv_transform(self, data):
-        return data * self.std + self.mean
-
-    def transform(self,data):
-        return (data - self.mean) / self.std
-
-    def get_mean_std(self):
-        return self.mean, self.std
-    
-    def __len__(self):
-        return len(self.name_list_1) - self.pointer
-    
-    def recover_from_ric2(self,data, joints_num):
-        r_rot_quat, r_pos = recover_root_rot_pos(data)
-
-        positions = data[..., 4:(joints_num - 1) * 3 + 4]
-        positions = positions.view(positions.shape[:-1] + (-1, 3))
-
-        '''Add Y-axis rotation to local joints'''
-        # positions = qrot(qinv(r_rot_quat[..., None, :]).expand(positions.shape[:-1] + (4,)), positions)
-
-        '''Add root XZ to joints'''
-        # positions[..., 0] += r_pos[..., 0:1]
-        # positions[..., 2] += r_pos[..., 2:3]
-
-        '''Concate root and joints'''
-        positions = torch.cat([r_pos.unsqueeze(-2), positions], dim=-2)
-
-        return positions.numpy()
-
-    def recover_rot(self,data):
-        # dataset [bs, seqlen, 263/251] HumanML/KIT
-        joints_num = 22 if data.shape[-1] == 263 else 21
-        r_rot_quat, r_pos = recover_root_rot_pos(data)
-        r_pos_pad = torch.cat([r_pos, torch.zeros_like(r_pos)], dim=-1).unsqueeze(-2)
-        r_rot_cont6d = quaternion_to_cont6d(r_rot_quat)
-        start_indx = 1 + 2 + 1 + (joints_num - 1) * 3
-        end_indx = start_indx + (joints_num - 1) * 6
-        cont6d_params = data[..., start_indx:end_indx]
-        cont6d_params = torch.cat([r_rot_cont6d, cont6d_params], dim=-1)
-        cont6d_params = cont6d_params.view(-1, joints_num, 6)
-        cont6d_params = torch.cat([cont6d_params, r_pos_pad], dim=-2)
-        return cont6d_params.numpy()
-
-    def extract_tensor(self,motion):
-        cont6d_params = self.recover_rot(torch.from_numpy(motion).float())
-        positions = self.recover_from_ric2(torch.from_numpy(motion).float(),22)
-
-        # print("motion",motion.shape)
-        # print("positions",positions.shape)
-        # print("cont6d_params",cont6d_params[:,:-1].shape)
-        root_tensor = motion[:,0:4]
-        feet =motion[:,-4:]
-
-        ric_data = motion[:,4:4 + 21*3].reshape(self.max_motion_length,21,-1)
-        rot_data = motion[:,4 + 21*3 : 4 + 21*3 + 21*6].reshape(self.max_motion_length,21,-1)
-        local_vel = motion[:,4 + 21*3 + 21*6 : 4 + 21*3 + 21*6 + 22*3].reshape(self.max_motion_length,22,-1)
-        root_vel = local_vel[:,0:1,:]
-
-        # print("rot_data",rot_data.shape)
-        # motion_ = np.concatenate([ric_data,rot_data,local_vel[:,1:,:]],axis=2)
-        motion_ = np.concatenate([positions,cont6d_params[:,:-1],local_vel],axis=2)
-
-        # print("motion_",motion_.shape)
-        # print("motion_2",motion_2.shape)
-        return root_tensor,motion_,root_vel,feet
-
-    def __getitem__(self, item):
-        idx_1 = (self.pointer_1 + item) #% len(self.name_list_1)
-        data_1 = self.data_dict_1[self.name_list_1[idx_1]]
-        motion_1, m_length_1 = data_1["motion"], data_1["length"]
-
-        idx_2 = (self.pointer_1 + item + random.randint(0,len(self.name_list_2)-1)) % len(self.name_list_2)
-        data_2 = self.data_dict_2[self.name_list_2[idx_2]]
-        motion_2, m_length_2 = data_2["motion"], data_2["length"]
-      
-        if self.unit_length < 10:
-            coin2 = np.random.choice(["single", "single", "double"])
-        else:
-            coin2 = "single"
-
-        if coin2 == "double":
-            m_length_1 = (m_length_1 // self.unit_length - 1) * self.unit_length
-            m_length_2 = (m_length_2 // self.unit_length - 1) * self.unit_length
-        elif coin2 == "single":
-            m_length_1 = (m_length_1 // self.unit_length) * self.unit_length
-            m_length_2 = (m_length_2 // self.unit_length) * self.unit_length
-        
-        idx_1 = random.randint(0, len(motion_1) - m_length_1)
-        motion_1 = motion_1[idx_1:idx_1 + m_length_1]
-        "Z Normalization"
-        motion_1 = (motion_1 - self.mean) / self.std
-
-        idx_2 = random.randint(0, len(motion_2) - m_length_2)
-        motion_2 = motion_2[idx_2:idx_2 + m_length_2]
-        "Z Normalization"
-        motion_2 = (motion_2 - self.mean) / self.std
-
-        # debug check nan
-        if np.any(np.isnan(motion_1)):
-            raise ValueError("nan in motion")
-        
-        if m_length_1 < self.max_motion_length:
-            motion_1 = np.concatenate([motion_1,
-                                     np.zeros((self.max_motion_length - m_length_1, motion_1.shape[1]))
-                                     ], axis=0)
-
-        if m_length_2 < self.max_motion_length:
-            motion_2 = np.concatenate([motion_2,
-                                     np.zeros((self.max_motion_length - m_length_2, motion_2.shape[1]))
-                                     ], axis=0)
-
-        #batch [seq,263]
-
-        root_tensor_1,motion_1_,root_vel_1,feet_1 = self.extract_tensor(motion_1)
-        root_tensor_2,motion_2_,root_vel_2,feet_2 = self.extract_tensor(motion_2)
-
-        return {
-            "motion_1": torch.from_numpy(motion_1).cuda(),
-            "root_tensor_1": torch.from_numpy(root_tensor_1).cuda(),
-            "root_vel_1": torch.from_numpy(root_vel_1).cuda(),
-            "feet_1":torch.from_numpy(feet_1).cuda(),
-
-            "motion_2": torch.from_numpy(motion_2).cuda(),
-            "root_tensor_2": torch.from_numpy(root_tensor_2).cuda(),
-            "root_vel_2": torch.from_numpy(root_vel_2).cuda(),
-            "feet_2":torch.from_numpy(feet_2).cuda(),
-        }
-
-
 class StyleMotionDataset(data.Dataset):
 
-    def __init__(self, stage = 'train'):
+    def __init__(self, stage = 'train',nclasses = 100):
         data_dict = {}
         id_list = []
         self.max_length = 20
         self.max_motion_length = 196
         self.unit_length = 4
         self.pointer = 0
+        self.nclasses = nclasses
 
-        txt_path = "/work/vig/zhonglei/stylized_motion/dataset_all/"
-        # txt_path = "/work/vig/zhonglei/stylized_motion/dataset/mocap/"
+        txt_path = "./datasets/"
+
         if stage == 'train':
-            # split_file = txt_path + "train_100STYLE_Full.txt"
-            split_file = txt_path + "train_100STYLE_Filter.txt"
+            if self.nclasses == 100:
+                split_file = txt_path + "train_100STYLE_Full.txt" #
+            else:
+                split_file = txt_path + "train_100STYLE_Filter.txt" #
         elif stage == 'test':
-            split_file = txt_path + "test_100STYLE_Filter.txt" #test_100STYLE
+            if self.nclasses == 100:
+                split_file = txt_path + "test_100STYLE_Full.txt"
+            else:
+                split_file = txt_path + "test_100STYLE_Filter.txt"
 
         self.stage = stage
         with cs.open(split_file, "r") as f:
             for line in f.readlines():
                 id_list.append(line.strip())
-        # dict_path = "/work/vig/zhonglei/stylized_motion/dataset/mocap/mocap_name_dict.txt"
-        dict_path = "/work/vig/zhonglei/stylized_motion/dataset_all/100STYLE_name_dict.txt"
+
+        dict_path = "./datasets/100STYLE_name_dict.txt"
         motion_to_label = build_dict_from_txt(dict_path)
         
-        # mean = np.load("/work/vig/zhonglei/stylized_motion/dataset/mocap/Mean.npy")
-        # std = np.load("/work/vig/zhonglei/stylized_motion/dataset/mocap/Std.npy")
-        mean = np.load("/work/vig/zhonglei/stylized_motion/dataset_all/Mean.npy")
-        std = np.load("/work/vig/zhonglei/stylized_motion/dataset_all/Std.npy")
+        mean = np.load("./datasets/Mean.npy")
+        std = np.load("./datasets/Std.npy")
         new_name_list = []
         length_list = []
         label_list = []
@@ -431,9 +162,8 @@ class StyleMotionDataset(data.Dataset):
         bad_count = 0
         new_name_list = []
 
-        # motion_dir = "/work/vig/zhonglei/stylized_motion/dataset/mocap/new_joint_vecs"
-        motion_dir = "/work/vig/zhonglei/stylized_motion/dataset_all/new_joint_vecs"
-        text_dir = "/work/vig/zhonglei/stylized_motion/dataset_all/texts"
+        motion_dir = "./datasets/new_joint_vecs"
+        text_dir = "./datasets/texts"
         length_list = []
 
         # id_list = id_list[:500]
@@ -451,7 +181,6 @@ class StyleMotionDataset(data.Dataset):
 
             motion = np.load(pjoin(motion_dir, name + ".npy"))
             label_data = motion_to_label[name]
-            # label_content_data = motion_to_content_label[name]
 
             if (len(motion)) < self.min_motion_length:
                 continue
@@ -549,333 +278,9 @@ class StyleMotionDataset(data.Dataset):
             "text":caption
         }
 
-
-class ContentMotionDataset(data.Dataset):
-
-    def __init__(self, stage = 'train'):
-        data_dict = {}
-        id_list = []
-        self.max_length = 20
-        self.max_motion_length = 196
-        self.unit_length = 4
-        self.pointer = 0
-
-        # txt_path = "/work/vig/zhonglei/stylized_motion/dataset_all/"
-        txt_path = "/work/vig/zhonglei/stylized_motion/dataset/mocap/"
-        if stage == 'train':
-            # split_file = txt_path + "train_100STYLE_Full.txt"
-            split_file = txt_path + "train.txt"
-        elif stage == 'test':
-            split_file = txt_path + "test.txt" #test_100STYLE
-
-        self.stage = stage
-        with cs.open(split_file, "r") as f:
-            for line in f.readlines():
-                id_list.append(line.strip())
-        dict_path = "/work/vig/zhonglei/stylized_motion/dataset/mocap/mocap_name_dict_content.txt"
-        motion_to_label = build_dict_from_txt(dict_path,is_style = False)
-
-        mean = np.load("/work/vig/zhonglei/stylized_motion/dataset/mocap/Mean.npy")
-        std = np.load("/work/vig/zhonglei/stylized_motion/dataset/mocap/Std.npy")
-
-        new_name_list = []
-        length_list = []
-        label_list = []
-        count = 0
-        bad_count = 0
-        new_name_list = []
-
-        motion_dir = "/work/vig/zhonglei/stylized_motion/dataset/mocap/new_joint_vecs"
-        text_dir = "/work/vig/zhonglei/stylized_motion/dataset/mocap/texts"
-        length_list = []
-
-        # id_list = id_list[:500]
-        enumerator = enumerate(
-            track(
-                id_list,
-                f"Loading mocap xia {split_file.split('/')[-1].split('.')[0]}",
-            ))
-        maxdata = 1e10
-        self.min_motion_length = 40
-
-        for i, name in enumerator:
-            if count > maxdata:
-                break
-
-            motion = np.load(pjoin(motion_dir, name + ".npy"))
-            label_data = motion_to_label[name]
-
-            if (len(motion)) < self.min_motion_length:
-                continue
-            text_data = []
-            
-            text_path = pjoin(text_dir, name + ".txt")
-            assert os.path.exists(text_path)
-            with cs.open(text_path) as f:
-                for line in f.readlines():
-                    text_dict_2 = {}
-                    line_split = line.strip().split("#")
-                    caption = line_split[0]
-                    text_dict_2["caption"] = caption
-                    text_data.append(text_dict_2)
-            
-            data_dict[name] = {
-                        "motion": motion,
-                        "length": len(motion),
-                        "label": label_data,
-                        "text": text_data,
-                    }
- 
-            new_name_list.append(name)
-            length_list.append(len(motion))
-            count += 1
-        
-        name_list, length_list = zip(
-            *sorted(zip(new_name_list, length_list), key=lambda x: x[1]))
-
-        self.mean = mean
-        self.std = std
-        self.length_arr = np.array(length_list)
-        self.data_dict = data_dict
-        self.nfeats = motion.shape[1]
-        self.name_list = name_list
-        # self.reset_max_len(self.max_length)
-    
-    def reset_max_len(self, length):
-        assert length <= self.max_motion_length
-        self.pointer = np.searchsorted(self.length_arr, length)
-        print("Pointer Pointing at %d" % self.pointer)
-        self.max_length = length
-
-    def inv_transform(self, data):
-        return data * self.std + self.mean
-
-    def transform(self,data):
-        return (data - self.mean) / self.std
-
-    def get_mean_std(self):
-        return self.mean, self.std
-    
-    def __len__(self):
-        return len(self.name_list) - self.pointer
-
-    def __getitem__(self, item):
-        idx = self.pointer + item
-        data = self.data_dict[self.name_list[idx]]
-        motion, m_length, label,text_list = data["motion"], data["length"], data["label"], data["text"]
-
-        if self.unit_length < 10:
-            coin2 = np.random.choice(["single", "single", "double"])
-        else:
-            coin2 = "single"
-
-        if coin2 == "double":
-            m_length = (m_length // self.unit_length - 1) * self.unit_length
-        elif coin2 == "single":
-            m_length = (m_length // self.unit_length) * self.unit_length
-        
-
-        text_data = random.choice(text_list)
-        caption = text_data["caption"]
-
-
-        m_length = min(196,m_length)
-        idx = random.randint(0, len(motion) - m_length)
-        motion = motion[idx:idx + m_length]
-        
-        "Z Normalization"
-        motion = (motion - self.mean) / self.std
-
-        if self.stage == 'train':
-            motion = random_zero_out(motion)
-
-        if m_length < self.max_motion_length:
-            motion = np.concatenate([motion,
-                                     np.zeros((self.max_motion_length - m_length, motion.shape[1]))
-                                     ], axis=0)
-
-        return {
-            "motion": torch.from_numpy(motion).cuda(),
-            "label":torch.tensor(int(label)).cuda(),
-            "length":m_length,
-            "text":caption
-        }
-
-
-class StyleMotionDatasetTri(data.Dataset):
-
-    def __init__(self, stage = 'train'):
-        data_dict = {}
-        id_list = []
-        self.max_length = 20
-        self.max_motion_length = 196
-        self.unit_length = 4
-        self.pointer = 0
-
-        txt_path = "/work/vig/zhonglei/stylized_motion/dataset_all/"
-        # txt_path = "/work/vig/zhonglei/stylized_motion/dataset/mocap/"
-        if stage == 'train':
-            split_file = txt_path + "train_100STYLE_Full.txt"
-        elif stage == 'test':
-            split_file = txt_path + "test_100STYLE_Full.txt" #test_100STYLE
-
-        self.stage = stage
-        with cs.open(split_file, "r") as f:
-            for line in f.readlines():
-                id_list.append(line.strip())
-        # dict_path = "/work/vig/zhonglei/stylized_motion/dataset/mocap/mocap_name_dict.txt"
-        dict_path = "/work/vig/zhonglei/stylized_motion/dataset_all/100STYLE_name_dict.txt"
-        motion_to_label = build_dict_from_txt(dict_path)
-        self.label_to_list = build_lable_list(dict_path)
-
-        
-
-        # mean = np.load("/work/vig/zhonglei/stylized_motion/dataset/mocap/Mean.npy")
-        # std = np.load("/work/vig/zhonglei/stylized_motion/dataset/mocap/Std.npy")
-        mean = np.load("/work/vig/zhonglei/stylized_motion/dataset_all/Mean.npy")
-        std = np.load("/work/vig/zhonglei/stylized_motion/dataset_all/Std.npy")
-        new_name_list = []
-        length_list = []
-        label_list = []
-        count = 0
-        bad_count = 0
-        new_name_list = []
-
-        # motion_dir = "/work/vig/zhonglei/stylized_motion/dataset/mocap/new_joint_vecs"
-        motion_dir = "/work/vig/zhonglei/stylized_motion/dataset_all/new_joint_vecs"
-        length_list = []
-
-        enumerator = enumerate(
-            track(
-                id_list,
-                f"Loading 100STYLE {split_file.split('/')[-1].split('.')[0]}",
-            ))
-        maxdata = 1e10
-        self.min_motion_length = 40
-        for i, name in enumerator:
-            if count > maxdata:
-                break
-
-            motion = np.load(pjoin(motion_dir, name + ".npy"))
-            label_data = motion_to_label[name]
-            if (len(motion)) < self.min_motion_length:
-                continue
-            data_dict[name] = {
-                        "motion": motion,
-                        "length": len(motion),
-                        "label": label_data,
-                    }
- 
-            new_name_list.append(name)
-            length_list.append(len(motion))
-            count += 1
-        
-        name_list, length_list = zip(
-            *sorted(zip(new_name_list, length_list), key=lambda x: x[1]))
-
-        self.mean = mean
-        self.std = std
-        self.length_arr = np.array(length_list)
-        self.data_dict = data_dict
-        self.nfeats = motion.shape[1]
-        self.name_list = name_list
-        # self.reset_max_len(self.max_length)
-    
-    def reset_max_len(self, length):
-        assert length <= self.max_motion_length
-        self.pointer = np.searchsorted(self.length_arr, length)
-        print("Pointer Pointing at %d" % self.pointer)
-        self.max_length = length
-
-    def inv_transform(self, data):
-        return data * self.std + self.mean
-
-    def transform(self,data):
-        return (data - self.mean) / self.std
-
-    def get_mean_std(self):
-        return self.mean, self.std
-    
-    def __len__(self):
-        return len(self.name_list) - self.pointer
-
-    def __getitem__(self, item):
-        idx = self.pointer + item
-        data = self.data_dict[self.name_list[idx]]
-        motion, m_length, label = data["motion"], data["length"], data["label"]
-
-        label_list = self.label_to_list[label]
-        list_len = len(label_list)
-        
-        random_name = None
-        while True:
-            random_index = random.randint(0, list_len - 1)
-            if random_index != idx:
-                random_name = self.name_list[random_index]
-                break
-
-        data_1_same = self.data_dict[random_name]
-        motion_1_same, m_length_1_same = data_1_same["motion"], data_1_same["length"]
-
-        label_list_neg = self.label_to_list[str((int(label) + 1) % 100)]
-        list_len_neg = len(label_list_neg)
-        
-        random_name_neg = self.name_list[random.randint(0, list_len_neg - 1)]
-        data_1_neg = self.data_dict[random_name_neg]
-        motion_1_neg, m_length_1_neg = data_1_neg["motion"], data_1_neg["length"]
-
-        if self.unit_length < 10:
-            coin2 = np.random.choice(["single", "single", "double"])
-        else:
-            coin2 = "single"
-
-        if coin2 == "double":
-            m_length = (m_length // self.unit_length - 1) * self.unit_length
-            m_length_1_same = (m_length_1_same // self.unit_length - 1) * self.unit_length
-            m_length_1_neg = (m_length_1_neg // self.unit_length - 1) * self.unit_length
-        elif coin2 == "single":
-            m_length = (m_length // self.unit_length) * self.unit_length
-            m_length_1_same = (m_length_1_same // self.unit_length) * self.unit_length
-            m_length_1_neg = (m_length_1_neg // self.unit_length) * self.unit_length
-        
-        m_length = min(196,m_length)
-        idx = random.randint(0, len(motion) - m_length)
-        motion = motion[idx:idx + m_length]
-
-        m_length_1_same = min(196,m_length_1_same)
-        idx_1_same = random.randint(0, len(motion_1_same) - m_length_1_same)
-        motion_1_same = motion_1_same[idx_1_same:idx_1_same + m_length_1_same]
-
-        m_length_1_neg = min(196,m_length_1_neg)
-        idx_1_neg = random.randint(0, len(motion_1_neg) - m_length_1_neg)
-        motion_1_neg = motion_1_neg[idx_1_neg:idx_1_neg + m_length_1_neg]
-        
-        "Z Normalization"
-        motion = (motion - self.mean) / self.std
-        motion_1_same = (motion_1_same - self.mean) / self.std
-        motion_1_neg = (motion_1_neg - self.mean) / self.std
-
-        if self.stage == 'train':
-            motion = random_zero_out(motion)
-            motion_1_same = random_zero_out(motion_1_same)
-            motion_1_neg = random_zero_out(motion_1_neg)
-
-        if m_length < self.max_motion_length:
-            motion = np.concatenate([motion,np.zeros((self.max_motion_length - m_length, motion.shape[1]))], axis=0)
-        
-        if m_length_1_same < self.max_motion_length:
-            motion_1_same = np.concatenate([motion_1_same,np.zeros((self.max_motion_length - m_length_1_same, motion_1_same.shape[1]))], axis=0)
-        
-        if m_length_1_neg < self.max_motion_length:
-            motion_1_neg = np.concatenate([motion_1_neg,np.zeros((self.max_motion_length - m_length_1_neg, motion_1_neg.shape[1]))], axis=0)
-
-        return {
-            "motion": torch.from_numpy(motion).cuda(),
-            "motion_pos": torch.from_numpy(motion_1_same).cuda(),
-            "motion_neg": torch.from_numpy(motion_1_neg).cuda(),
-            "label":torch.tensor(int(label)).cuda()
-        }
 """For use of training text-2-motion generative model"""
+
+
 class Text2MotionDataset(data.Dataset):
 
     def __init__(self, opt, mean, std, split_file, w_vectorizer):
@@ -1118,7 +523,7 @@ class Text2MotionDatasetCMLDTest(data.Dataset):
         split_subfile_1 = os.path.join(split_dir,split_base + "_humanml.txt")#_humanml
         split_subfile_2 = os.path.join(split_dir,split_base + "_100STYLE_Filter.txt")#_100STYLE_Filter
 
-        dict_path = "/work/vig/zhonglei/stylized_motion/dataset_all/100STYLE_name_dict_Filter.txt"
+        dict_path = "./datasets/100STYLE_name_dict_Filter.txt"
         motion_to_label = build_dict_from_txt(dict_path)
         motion_to_style_text = build_dict_from_txt(dict_path,is_style_text=True)
 
@@ -1643,9 +1048,6 @@ class Text2MotionDatasetCMLD(data.Dataset):
         split_subfile_1 = os.path.join(split_dir,split_base + "_100STYLE_Full.txt")#_humanml
         # split_subfile_1 = os.path.join(split_dir,split_base + ".txt")#_humanml
         split_subfile_2 = os.path.join(split_dir,split_base + "_humanml.txt")#_100STYLE
-
-        # split_subfile_1 = os.path.join(split_dir,split_base + "_mocap.txt")#_humanml
-        # split_subfile_2 = os.path.join(split_dir,split_base + "_humanml.txt")#_100STYLE
 
         with cs.open(split_subfile_1, "r") as f:
             for line in f.readlines():

@@ -36,12 +36,83 @@ We have released the retargeted 100STYLE dataset, mapped to the SMPL skeleton, a
 ## PRETRAINED_WEIGHTS
 Available on [Google Drive](https://drive.google.com/drive/folders/12m_v_vybVeAQFkH9bP8wmJIxJhGoIJL1?usp=sharing).
 
+## Getting started
+This code requires:
+
+* Python 3.9
+* conda3 or miniconda3
+* CUDA capable GPU (one is enough)
+
+### 1. Setup environment
+
+Install ffmpeg (if not already installed):
+
+```shell
+sudo apt update
+sudo apt install ffmpeg
+```
+For windows use [this](https://www.geeksforgeeks.org/how-to-install-ffmpeg-on-windows/) instead.
+
+Setup conda env:
+```shell
+conda env create -f environment.yml
+conda activate omnicontrol
+python -m spacy download en_core_web_sm
+pip install git+https://github.com/openai/CLIP.git
+```
+
+Download dependencies:
+
+```bash
+bash prepare/download_smpl_files.sh
+bash prepare/download_glove.sh
+bash prepare/download_t2m_evaluators.sh
+```
+
+
+### 2. Get data
+
+#### Full data (text + motion capture)
+
+**HumanML3D** - Follow the instructions in [HumanML3D](https://github.com/EricGuo5513/HumanML3D.git),
+then copy the result dataset to our repository:
+
+```shell
+cp -r ../HumanML3D/HumanML3D ./dataset/HumanML3D
+```
+
+**100STYLE** - Download the dataset from Google Drive, then copy the files in texts, new_joints, and new_joint_vecs into their corresponding directories within ./dataset/HumanML3D. We use indices larger than 030000 to represent data from the 100STYLE dataset.
+
+### 3. Download the pretrained models
+
+1. Download the model(s) you wish to use, then unzip and place them in `./save/`. 
+2. Download the pretrained model from [MLD](https://github.com/ChenFengYe/motion-latent-diffusion) and then copy it to `./save/`. 
+
+
+## Motion Synthesis
+Please add the content text to ./demo/test.txt and the style motion to ./test_motion, then run:
+```shell
+bash demo.sh
+```
+
+## Train your own SMooDi
+You can train your own model via
+```shell
+bash train.sh
+```
+
+## Evaluate
+You can evaluate model via
+```shell
+bash test.sh
+```
+
 ## Acknowledgments
 
-Our code is based on [MLD](https://github.com/ChenFengYe/motion-latent-diffusion).  
+Our code is heavily based on [MLD](https://github.com/ChenFengYe/motion-latent-diffusion).  
 The motion visualization is based on [MLD](https://github.com/ChenFengYe/motion-latent-diffusion) and [TMOS](https://github.com/Mathux/TEMOS). 
 We also thank the following works:
-[guided-diffusion](https://github.com/openai/guided-diffusion), [MotionCLIP](https://github.com/GuyTevet/MotionCLIP), [text-to-motion](https://github.com/EricGuo5513/text-to-motion), [actor](https://github.com/Mathux/ACTOR), [joints2smpl](https://github.com/wangsen1312/joints2smpl), [MoDi](https://github.com/sigal-raab/MoDi), [HumanML3D](https://github.com/EricGuo5513/HumanML3D) [OmniControl](https://github.com/neu-vi/OmniControl).
+[guided-diffusion](https://github.com/openai/guided-diffusion), [MotionCLIP](https://github.com/GuyTevet/MotionCLIP), [text-to-motion](https://github.com/EricGuo5513/text-to-motion), [actor](https://github.com/Mathux/ACTOR), [joints2smpl](https://github.com/wangsen1312/joints2smpl), [MoDi](https://github.com/sigal-raab/MoDi), [HumanML3D](https://github.com/EricGuo5513/HumanML3D), [OmniControl](https://github.com/neu-vi/OmniControl).
 
 ## License
 This code is distributed under an [MIT LICENSE](LICENSE).  

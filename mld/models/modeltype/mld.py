@@ -1082,7 +1082,6 @@ class MLD(BaseModel):
 
             "noise_pred_cycle_y":noise_yxy + noise_yx_prime.detach() ,
             "noise_cycle_y":noise_y,
-
         }
 
         return n_set
