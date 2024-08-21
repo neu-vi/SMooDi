@@ -121,13 +121,11 @@ model:
   guidance_uncondp_style: 0.1
 
   cmld: true #true
-  is_train_motionclip: False
   is_control: true #true
-  is_guidance: False  
+  is_guidance: true  
   is_cycle: true #true
   is_recon: False
-  is_test: true  
-  is_test_walk: False
+  is_test: False  
 
   guidance_mode: 'v4'
 

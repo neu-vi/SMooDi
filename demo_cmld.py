@@ -77,7 +77,7 @@ def main():
     style_dict = torch.load(cfg.TRAIN.PRETRAINED_STYLE)
     model.style_function.load_state_dict(style_dict, strict=True)
     
-    style_dict = torch.load("./experiments/style_encoder.pt")
+    style_dict = torch.load("./save/style_encoder.pt")
     style_class = StyleClassification(nclasses=100)#.cuda()
     style_class.load_state_dict(style_dict, strict=True)
     

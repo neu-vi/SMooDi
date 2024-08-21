@@ -1,0 +1,1 @@
+python -m test_cmld --cfg configs/config_cmld_humanml3d.yaml --cfg_assets configs/assets.yaml
