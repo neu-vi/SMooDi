@@ -20,8 +20,8 @@ If you find our code or paper helpful, please consider starring our repository a
 ## TODO List
 - [x] Release retargeted 100STYLE dataset.
 - [x] Code for Inference and Pretrained model.
-- [ ] Evaluation code and metrics.
-- [ ] Code for training.
+- [x] Evaluation code and metrics.
+- [x] Code for training.
 
 ## Retargeted 100STYLE Dataset
 We have released the retargeted 100STYLE dataset, mapped to the SMPL skeleton, available on [Google Drive](https://drive.google.com/drive/folders/1P_aQdSuiht3gh1kjGkK4KBt_9i9ARawy?usp=drive_link).
@@ -95,17 +95,31 @@ Please add the content text to ./demo/test.txt and the style motion to ./test_mo
 bash demo.sh
 ```
 
+Tips:
+For some motion styles, the default parameter settings may not achieve the desired results. You can modify the `guidance_scale_style` in `config_cmld_humanml3d.yaml` to achieve a better balance between content preservation and style reflection.
+
+
 ## Train your own SMooDi
 You can train your own model via
 ```shell
 bash train.sh
 ```
 
+Tips:
+1. In `config_cmld_humanml3d.yaml`, setting `is_recon: True` means that cycle loss will be used during training. 
+2. If you want to quickly train a model, you can set `is_recon: False`. With this setting, it will take nearly 50 minutes to train 50 epochs on an A5000 GPU and achieve performance nearly equivalent to the second row in Table 3 of our paper. 
+3. In fact, the improvement in performance from cycle loss is quite limited.
+
+
 ## Evaluate
 You can evaluate model via
 ```shell
 bash test.sh
 ```
+
+Tips:
+1. Make sure to set `is_test: True` during evaluation.
+2. In `config_cmld_humanml3d.yaml`, setting `is_guidance: True` means that classifier-based style guidance will be used during evaluation. If `is_guidance: False`, evaluation will take nearly 50 minutes, whereas it will take 4 hours if `is_guidance: True` on an A5000 GPU.
 
 ## Acknowledgments
 

@@ -1133,13 +1133,6 @@ class MLD(BaseModel):
                 return_dict=False,
             )[0]
 
-        # if self.is_style_recon:
-        #     style_emb = self.denoiser.style_encode(reference_motion)
-
-        #     self.scheduler.alphas_cumprod = self.scheduler.alphas_cumprod.cuda()
-        #     clean_sample = self.get_clean_sample(noise_pred,noisy_latents,timesteps.unsqueeze(1).unsqueeze(2))
-        #     joints = self.vae.decode(clean_sample.permute(1, 0, 2).contiguous(), lengths)
-        #     style_emb_recon = self.denoiser.style_encode(joints)
 
         if self.is_guidance:
             self.scheduler.set_timesteps(self.cfg.model.scheduler.num_inference_timesteps)
@@ -1151,20 +1144,6 @@ class MLD(BaseModel):
         noise_pre_mld = 0.0
         time_mask = torch.where(timesteps > 700, torch.tensor(1).cuda(), torch.tensor(0).cuda())#(timesteps >= 700).bool
         
-        # if self.is_regularizer:
-        #     with torch.no_grad():
-        #         noise_pre_mld = self.denoiser.mld_denoiser(
-        #             sample=noisy_latents,
-        #             timestep=timesteps,
-        #             encoder_hidden_states=encoder_hidden_states,
-        #             lengths=lengths,
-        #             reference=None,
-        #             return_dict=False,
-        #         )[0]
-
-            # time_mask = time_mask.unsqueeze(1).unsqueeze(2)
-            # noise_pre_mld = noise_pre_mld * time_mask
-
 
         # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.
         if self.cfg.LOSS.LAMBDA_PRIOR != 0.0:
@@ -1182,12 +1161,6 @@ class MLD(BaseModel):
             "noise_prior": noise_prior,
         }
 
-        # if self.is_regularizer:
-        #     n_set["noise_pred_mld"] = noise_pre_mld.detach()
-
-        # if self.is_style_recon:
-        #     n_set["style_emb"] = style_emb
-        #     n_set["style_emb_recon"] = style_emb_recon
         # predict_epsilon : True
         if not self.predict_epsilon:
             n_set["pred"] = noise_pred
@@ -1256,7 +1229,6 @@ class MLD(BaseModel):
             text_1 = batch["text_1"]
             text_2 = batch["text_2"]
 
-            # if self.guidance_mode == "v0":
             text_1 = [
                 "" if np.random.rand(1) < self.guidance_uncodp else i
                 for i in text_1
@@ -1267,8 +1239,6 @@ class MLD(BaseModel):
             ]
 
             if self.guidance_mode == 'v4':
-                # text_1 = [i for i in text_1]
-                # text_2 = [i for i in text_2]
 
                 dim0_length = feats_ref_1.shape[0]
                 mask1 = torch.bernoulli(torch.full((dim0_length,), self.guidance_uncondp_style)).unsqueeze(1).unsqueeze(2)
@@ -1285,7 +1255,12 @@ class MLD(BaseModel):
             cond_emb_2 = self.text_encoder(text_2)
 
         # diffusion process return with noise and noise_pred
-        n_set = self._cyclenet_process(z_1,z_2, cond_emb_1,cond_emb_2,lengths_1,lengths_2,feats_ref_1,feats_ref_2)
+        if self.is_recon:
+            # Disable cycle loss.
+            n_set = self._cycle_diffusion_process(z_1,z_2, cond_emb_1,cond_emb_2,lengths_1,lengths_2,feats_ref_1,feats_ref_2)
+        else:
+            # Enable cycle loss.
+            n_set = self._cyclenet_process(z_1,z_2, cond_emb_1,cond_emb_2,lengths_1,lengths_2,feats_ref_1,feats_ref_2)
 
         return {**n_set}
     
@@ -1439,14 +1414,6 @@ class MLD(BaseModel):
         reference_motion = batch["reference_motion"].detach().clone()
         label = batch["label"][0].detach().clone()
 
-        if self.is_style_text:
-            style_text = batch["style_text"]
-
-        if self.is_test_walk == False:
-            word_embs = batch["word_embs"].detach().clone()
-            pos_ohot = batch["pos_ohot"].detach().clone()
-            text_lengths = batch["text_len"].detach().clone()
-
         # start
         start = time.time()
         if self.trainer.datamodule.is_mm:
@@ -1454,9 +1421,6 @@ class MLD(BaseModel):
             motions = motions.repeat_interleave(self.cfg.TEST.MM_NUM_REPEATS,
                                                 dim=0)
             lengths = lengths * self.cfg.TEST.MM_NUM_REPEATS
-
-            if self.is_style_text:
-                style_text = style_text * self.cfg.TEST.MM_NUM_REPEATS
 
             if self.is_test_walk == False:
                 word_embs = word_embs.repeat_interleave(
@@ -1613,7 +1577,6 @@ class MLD(BaseModel):
             
                 text_lengths = text_lengths.repeat_interleave(self.cfg.TEST.MM_NUM_REPEATS, dim=0)
 
-        # if self.stage in ['diffusion', 'vae_diffusion',"cycle_diffusion"]:
         if self.stage in ['diffusion', 'vae_diffusion',"cycle_diffusion"]:
       
             if self.guidance_mode == 'v0':
@@ -1632,7 +1595,6 @@ class MLD(BaseModel):
                 empty_ref = torch.zeros_like(reference_motion)
 
                 reference_motion = torch.cat((empty_ref,empty_ref,reference_motion),dim=0)
-                    # uncond_tokens = [texts[i] for i in range(len(texts))]
                 uncond_tokens = [""] * len(texts)
                 uncond_tokens2 = [""] * len(texts)
                 if self.condition == 'text':
