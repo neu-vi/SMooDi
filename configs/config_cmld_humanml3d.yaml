@@ -26,7 +26,7 @@ DEVICE: [0]
 #####################################
 TRAIN:
   # Model stage. Optional: "vae", "diffusion"
-  STAGE:  "vae" #diffusion
+  STAGE:  "diffusion" #diffusion
   # Training dataset name
   DATASETS: ['humanml3d']
   # Number of dataloader workers
