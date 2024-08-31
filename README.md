@@ -106,8 +106,8 @@ bash train.sh
 ```
 
 Tips:
-1. In `config_cmld_humanml3d.yaml`, setting `is_recon: True` means that cycle loss will be used during training. 
-2. If you want to quickly train a model, you can set `is_recon: False`. With this setting, it will take nearly 50 minutes to train 50 epochs on an A5000 GPU and achieve performance nearly equivalent to the second row in Table 3 of our paper. 
+1. In `config_cmld_humanml3d.yaml`, setting `is_recon: True` means that cycle loss will not be used during training. 
+2. If you want to quickly train a model, you can set `is_recon: True`. With this setting, it will take nearly 50 minutes to train 50 epochs on an A5000 GPU and achieve performance nearly equivalent to the second row in Table 3 of our paper. 
 3. In fact, the improvement in performance from cycle loss is quite limited.
 
 
