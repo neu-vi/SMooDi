@@ -9,10 +9,10 @@
 ## Citation
 If you find our code or paper helpful, please consider starring our repository and citing:
 ```bibtex
-@article{zhong2024smoodi,
+@inproceedings{zhong2024smoodi,
       title={SMooDi: Stylized Motion Diffusion Model},
       author={Zhong, Lei and Xie, Yiming and Jampani, Varun and Sun, Deqing and Jiang, Huaizu},
-      journal={arXiv preprint arXiv:2407.12783},
+      booktitle={ECCV},
       year={2024}
 }
 ```
