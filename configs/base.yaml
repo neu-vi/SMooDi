@@ -35,7 +35,7 @@ TRAIN:
     # IS_TRI: False
     # IS_INFONCE: False
     # IS_STYLE_TEXT: False
-    IS_MOTION_CLIP: False
+    # IS_MOTION_CLIP: False
     # STYLE_RECON: False
     TEST: true
     # SINGLE: False
