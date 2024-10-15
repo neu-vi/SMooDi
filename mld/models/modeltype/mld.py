@@ -155,10 +155,10 @@ class MLD(BaseModel):
 
         if self.is_test:
             nclass = 47
-            dict_path = "./dataset/100STYLE_name_dict_Filter.txt"
+            dict_path = "./datasets/100STYLE_name_dict_Filter.txt"
         else:
             nclass = 100
-            dict_path = "./dataset//100STYLE_name_dict.txt"
+            dict_path = "./datasets/100STYLE_name_dict.txt"
 
         self.label_to_motion = build_dict_from_txt(dict_path)
 
@@ -166,8 +166,8 @@ class MLD(BaseModel):
             self.stage = "cycle_diffusion"#"cycle_diffusion"
         
         if self.is_test:
-            self.mean = np.load("/work/vig/zhonglei/stylized_motion/dataset_all/Mean.npy")
-            self.std = np.load("/work/vig/zhonglei/stylized_motion/dataset_all/Std.npy")
+            self.mean = np.load("./datasets/Mean.npy")
+            self.std = np.load("./datasets/Std.npy")
 
             self.mean = torch.from_numpy(self.mean).cuda()
             self.std = torch.from_numpy(self.std).cuda()
@@ -185,6 +185,8 @@ class MLD(BaseModel):
         
         self.denoiser = instantiate_from_config(cfg.model.denoiser)
 
+
+        print("nclass",nclass)
         self.style_function = StyleClassification(nclasses=nclass)
         self.style_function.eval()
 
@@ -527,10 +529,10 @@ class MLD(BaseModel):
                 
                 elif self.guidance_mode == 'v4':
                     batch_size = len(texts)
-                    reference_motion = reference_motion.expand(batch_size,-1,-1)
-                    empty_ref = torch.zeros_like(reference_motion)
+                    feats_ref = feats_ref.expand(batch_size,-1,-1)
+                    empty_ref = torch.zeros_like(feats_ref)
 
-                    reference_motion = torch.cat((empty_ref,empty_ref,reference_motion),dim=0)
+                    feats_ref = torch.cat((empty_ref,empty_ref,feats_ref),dim=0)
 
                     uncond_tokens = [""] * len(texts)
                     uncond_tokens2 = [""] * len(texts)
@@ -542,7 +544,27 @@ class MLD(BaseModel):
                     texts = uncond_tokens
                     text_emb = self.text_encoder(texts)
      
-                    z = self._diffusion_reverse(text_emb, lengths,feats_ref, is_v4=True)
+                    z = self._diffusion_reverse(text_emb, lengths,feats_ref, mode = "v4")
+                
+                elif self.guidance_mode == 'v2':
+                    batch = len(texts)
+                    feats_ref = feats_ref.expand(batch,-1,-1)
+                    empty_ref = torch.zeros_like(feats_ref)
+
+                    feats_ref = torch.cat((empty_ref,empty_ref,feats_ref),dim=0)
+                    # uncond_tokens = [texts[i] for i in range(len(texts))]
+                    uncond_tokens = [""] * len(texts)
+                    uncond_tokens2 = [""] * len(texts)
+                    if self.condition == 'text':
+                        uncond_tokens.extend(texts)
+                        uncond_tokens.extend(uncond_tokens2)
+
+                    elif self.condition == 'text_uncond':
+                        uncond_tokens.extend(uncond_tokens)
+                    texts = uncond_tokens
+                    text_emb = self.text_encoder(texts)
+     
+                    z = self._diffusion_reverse(text_emb, lengths,feats_ref,mode = "v2")
 
         elif self.stage in ['vae']:
             motions = batch['motion']
@@ -684,12 +706,12 @@ class MLD(BaseModel):
         return latent_list,time_list
 
 
-    def _diffusion_reverse(self, encoder_hidden_states, lengths=None,reference_motion=None,is_v4 = False):
+    def _diffusion_reverse(self, encoder_hidden_states, lengths=None,reference_motion=None,mode = "v2"):
         # init latents
         bsz = encoder_hidden_states.shape[0]
-        if self.do_classifier_free_guidance and is_v4 == False:
+        if self.do_classifier_free_guidance and mode == "v0":
             bsz = bsz // 2
-        elif self.do_classifier_free_guidance and is_v4 == True:
+        elif self.do_classifier_free_guidance and mode != "v0":
             bsz = bsz // 3
 
         if self.vae_type == "no":
@@ -725,7 +747,7 @@ class MLD(BaseModel):
         for i, t in enumerate(timesteps):
             current_t = int(t.cpu().numpy())-1
             # expand the latents if we are doing classifier free guidance
-            if is_v4 == False:
+            if mode == "v0":
                 latent_model_input = (torch.cat(
                     [latents] *
                     2) if self.do_classifier_free_guidance else latents)
@@ -754,7 +776,7 @@ class MLD(BaseModel):
                 )[0]
             
             # perform guidance
-            if self.do_classifier_free_guidance and is_v4 == False:
+            if self.do_classifier_free_guidance and mode == "v0":
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                 
@@ -762,7 +784,7 @@ class MLD(BaseModel):
                     with torch.set_grad_enabled(True):
                         noise_pred = self.guide(noise_pred, t, latents, lengths,reference_motion)
 
-            elif self.do_classifier_free_guidance and is_v4 == True:
+            elif self.do_classifier_free_guidance and mode == "v4":
                
                 noise_pred_uncond,noise_pred_text,noise_pred_style = noise_pred.chunk(3)
                 delat_pre_text = noise_pred_text - noise_pred_uncond
@@ -777,6 +799,24 @@ class MLD(BaseModel):
                     with torch.set_grad_enabled(True):
                         noise_pred = self.guide(noise_pred, t, latents, lengths,reference)
 
+                noise_pred = noise_pred + self.guidance_scale * delat_pre_text
+            
+            elif self.do_classifier_free_guidance and mode == "v2":
+               
+                noise_pred_uncond,noise_pred_text,noise_pred_style = noise_pred.chunk(3)
+                delat_pre_text = noise_pred_text - noise_pred_uncond
+                delat_pre_style = noise_pred_style - noise_pred_uncond
+                
+                noise_pred = noise_pred_uncond + self.guidance_scale_style * delat_pre_style
+
+                # if self.is_style_text == False:
+                _,_,reference = reference_motion.chunk(3)
+
+                if self.is_guidance and current_t < 300:
+                    with torch.set_grad_enabled(True):
+                        noise_pred = self.guide(noise_pred, t, latents, lengths,reference)
+                
+                # delat_pre_style_m = noise_pred - noise_pred_uncond
                 noise_pred = noise_pred + self.guidance_scale * delat_pre_text
 
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
@@ -1406,17 +1446,21 @@ class MLD(BaseModel):
         cont6d_params = torch.cat([cont6d_params, r_pos_pad], dim=-2)
         return cont6d_params
 
-    def t2m_eval(self, batch):
+    def t2m_eval(self, batch,is_mm=False):
         texts = batch["text"]
-        motions = batch["motion"].detach().clone()
+        motions = batch["motion"].detach().clone().cuda()
         lengths = batch["length"]
         
-        reference_motion = batch["reference_motion"].detach().clone()
-        label = batch["label"][0].detach().clone()
+        reference_motion = batch["reference_motion"].detach().clone().cuda()
+        label = batch["label"][0].detach().clone().cuda()
+
+        word_embs = batch["word_embs"].detach().clone().cuda()
+        pos_ohot = batch["pos_ohot"].detach().clone().cuda()
+        text_lengths = batch["text_len"].detach().clone().cuda()
 
         # start
         start = time.time()
-        if self.trainer.datamodule.is_mm:
+        if is_mm:
             texts = texts * self.cfg.TEST.MM_NUM_REPEATS
             motions = motions.repeat_interleave(self.cfg.TEST.MM_NUM_REPEATS,
                                                 dim=0)
@@ -1439,7 +1483,7 @@ class MLD(BaseModel):
                     uncond_tokens.extend(uncond_tokens)
                 texts = uncond_tokens
                 text_emb = self.text_encoder(texts)
-                z = self._diffusion_reverse(text_emb, lengths,reference_motion)
+                z = self._diffusion_reverse(text_emb, lengths,reference_motion,mode = "v0")
             
             elif self.guidance_mode == 'v4':
                 batch_size = len(texts)
@@ -1459,8 +1503,27 @@ class MLD(BaseModel):
                 texts = uncond_tokens
                 text_emb = self.text_encoder(texts)
 
-                z = self._diffusion_reverse(text_emb, lengths,reference_motio,is_v4 = True)
+                z = self._diffusion_reverse(text_emb, lengths,reference_motion,mode = "v4")
 
+            elif self.guidance_mode == 'v2':
+                    batch = len(texts)
+                    reference_motion = reference_motion.expand(batch,-1,-1)
+                    empty_ref = torch.zeros_like(reference_motion)
+
+                    reference_motion = torch.cat((empty_ref,empty_ref,reference_motion),dim=0).cuda()
+                    # uncond_tokens = [texts[i] for i in range(len(texts))]
+                    uncond_tokens = [""] * len(texts)
+                    uncond_tokens2 = [""] * len(texts)
+                    if self.condition == 'text':
+                        uncond_tokens.extend(texts)
+                        uncond_tokens.extend(uncond_tokens2)
+
+                    elif self.condition == 'text_uncond':
+                        uncond_tokens.extend(uncond_tokens)
+                    texts = uncond_tokens
+                    text_emb = self.text_encoder(texts)
+     
+                    z = self._diffusion_reverse(text_emb, lengths,reference_motion,mode = "v2")
 
         elif self.stage in ['vae']:
             if self.vae_type in ["mld", "vposert", "actor"]:
@@ -1587,7 +1650,7 @@ class MLD(BaseModel):
                     uncond_tokens.extend(uncond_tokens)
                 texts = uncond_tokens
                 text_emb = self.text_encoder(texts)
-                z = self._diffusion_reverse(text_emb, lengths,reference_motion)
+                z = self._diffusion_reverse(text_emb, lengths,reference_motion,mode = "v0")
             
             elif self.guidance_mode == 'v4':
                 batch_size = len(texts)
@@ -1605,8 +1668,27 @@ class MLD(BaseModel):
                 texts = uncond_tokens
                 text_emb = self.text_encoder(texts)
      
-                z = self._diffusion_reverse(text_emb, lengths,reference_motion,is_v4 = True)
-        
+                z = self._diffusion_reverse(text_emb, lengths,reference_motion,mode = "v4")
+
+            elif self.guidance_mode == 'v2':
+                    batch = len(texts)
+                    reference_motion = reference_motion.expand(batch,-1,-1)
+                    empty_ref = torch.zeros_like(reference_motion)
+
+                    reference_motion = torch.cat((empty_ref,empty_ref,reference_motion),dim=0).cuda()
+                    # uncond_tokens = [texts[i] for i in range(len(texts))]
+                    uncond_tokens = [""] * len(texts)
+                    uncond_tokens2 = [""] * len(texts)
+                    if self.condition == 'text':
+                        uncond_tokens.extend(texts)
+                        uncond_tokens.extend(uncond_tokens2)
+
+                    elif self.condition == 'text_uncond':
+                        uncond_tokens.extend(uncond_tokens)
+                    texts = uncond_tokens
+                    text_emb = self.text_encoder(texts)
+     
+                    z = self._diffusion_reverse(text_emb, lengths,reference_motion,mode = "v2")
         elif self.stage in ['vae']:
             if self.vae_type in ["mld", "vposert", "actor"]:
                 z, dist_m = self.vae.encode(motions, lengths)
@@ -1669,9 +1751,9 @@ class MLD(BaseModel):
         motion_emb = self.t2m_motionencoder(motion_mov, m_lens)
 
         # t2m text encoder
-        if self.is_test_walk == False:
-            text_emb = self.t2m_textencoder(word_embs, pos_ohot,
-                                        text_lengths)[align_idx]
+        # if self.is_test_walk == False:
+        text_emb = self.t2m_textencoder(word_embs, pos_ohot,
+                                    text_lengths)[align_idx]
 
         rs_set = {
             "m_ref": motions,
@@ -1791,7 +1873,7 @@ class MLD(BaseModel):
         }
         return rs_set
 
-    def allsplit_step(self, split: str, batch, batch_idx):
+    def allsplit_step(self, split: str, batch, batch_idx,is_mm = False):
         if self.is_test == False:
             if split in ["train","val"]:
                 if self.stage == "vae":
@@ -1838,7 +1920,7 @@ class MLD(BaseModel):
                     # use a2m evaluators
                     rs_set = self.a2m_eval(batch)
                 # MultiModality evaluation sperately
-                if self.trainer.datamodule.is_mm:
+                if is_mm:
                     metrics_dicts = ['MMMetrics']
                 else:
                     metrics_dicts = self.metrics_dict

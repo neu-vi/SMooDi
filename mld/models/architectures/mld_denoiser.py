@@ -5,7 +5,7 @@ from mld.models.architectures.tools.embeddings import (TimestepEmbedding,
 from mld.models.operator import PositionalEncoding
 from mld.models.operator.cross_attention import (SkipTransformerEncoder,
                                                  TransformerDecoder,
-                                                 TransformerEncoderTemporalLayer,
+                                                #  TransformerEncoderTemporalLayer,
                                                  TransformerDecoderLayer,
                                                  TransformerEncoder,
                                                  TransformerEncoderLayer)
@@ -237,12 +237,12 @@ class ControlMldDenoiser(nn.Module):
         self.arch = arch
         self.pe_type = ablation.DIFF_PE_TYPE
         self.latent_size = latent_dim[0]
-        self.is_adain = ablation.IS_ADAIN
+        # self.is_adain = ablation.IS_ADAIN
         self.alpha = 1.0
         self.is_test = ablation.TEST
-        self.is_test_walk = ablation.TEST_WALK
+        # self.is_test_walk = ablation.TEST_WALK
 
-        self.is_style_text = ablation.IS_STYLE_TEXT
+        # self.is_style_text = ablation.IS_STYLE_TEXT
         
         #MLD
         if text_encoded_dim != self.latent_dim:

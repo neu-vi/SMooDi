@@ -112,8 +112,8 @@ MMM_JOINT_MAP = {
 # mmm_smpl_dix = smpl2mmm_indexes
 # mmm_smpl_dix = smplh2mmm_indexes
 # todo - configable
-SMPL_MODEL_DIR = "/work/vig/zhonglei/stylized_motion/motion-latent-diffusion/deps/smpl_models/"
-GMM_MODEL_DIR = "/work/vig/zhonglei/stylized_motion/motion-latent-diffusion/deps/smpl_models/"
-SMPL_MEAN_FILE = "/work/vig/zhonglei/stylized_motion/motion-latent-diffusion/deps/smpl_models/neutral_smpl_mean_params.h5"
+SMPL_MODEL_DIR = "./deps/smpl_models/"
+GMM_MODEL_DIR = "./deps/smpl_models/"
+SMPL_MEAN_FILE = "./deps/smpl_models/neutral_smpl_mean_params.h5"
 # for collsion
-Part_Seg_DIR = "/work/vig/zhonglei/stylized_motion/motion-latent-diffusion/deps/smpl_models/smplx_parts_segm.pkl"
+Part_Seg_DIR = "./deps/smpl_models/smplx_parts_segm.pkl"

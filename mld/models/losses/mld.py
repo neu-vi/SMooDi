@@ -71,14 +71,14 @@ class MLDLosses(Metric):
         self.is_cycle = cfg.TRAIN.ABLATION.CYCLE
         self.is_recon = cfg.TRAIN.ABLATION.RECON
         self.is_two_dataset = cfg.TRAIN.ABLATION.TWODATASET
-        self.is_tri = cfg.TRAIN.ABLATION.IS_TRI
-        self.is_info = cfg.TRAIN.ABLATION.IS_INFONCE
-        self.is_style_recon = cfg.TRAIN.ABLATION.STYLE_RECON
-        self.is_motion_clip = cfg.TRAIN.ABLATION.IS_MOTION_CLIP
+        # self.is_tri = cfg.TRAIN.ABLATION.IS_TRI
+        # self.is_info = cfg.TRAIN.ABLATION.IS_INFONCE
+        # self.is_style_recon = cfg.TRAIN.ABLATION.STYLE_RECON
+        # self.is_motion_clip = cfg.TRAIN.ABLATION.IS_MOTION_CLIP
         losses = []
 
-        if self.is_motion_clip:
-            self.stage = "motion_clip"
+        # if self.is_motion_clip:
+        #     self.stage = "motion_clip"
         # diffusion loss
         if self.stage in ['diffusion', 'vae_diffusion']:
             # instance noise loss
