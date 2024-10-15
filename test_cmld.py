@@ -128,17 +128,11 @@ def main():
         logger.info(f"Evaluating {metrics_type} - Replication {i}")
       
         for batch_idx, batch in enumerate(data_loader):
-<<<<<<< HEAD
             # model.allsplit_step_test("test", batch, batch_idx)    
             model.allsplit_step("test", batch, batch_idx)
 
         # metrics = model.allsplit_epoch_end_test("test")
         metrics = model.allsplit_epoch_end("test")
-=======
-            model.allsplit_step_test("test", batch, batch_idx)
-
-        metrics = model.allsplit_epoch_end_test("test")
->>>>>>> 045ca9590646d12c0e3a4de1ddbe6f8e20e4262c
               
         for key, item in metrics.items():
             if key not in all_metrics:

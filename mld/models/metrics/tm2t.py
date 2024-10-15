@@ -4,11 +4,7 @@ import torch
 from torch import Tensor
 from torchmetrics import Metric
 from torchmetrics.functional import pairwise_euclidean_distance
-<<<<<<< HEAD
 # from tmr.src.model.tmr import get_score_matrix
-=======
-from tmr.src.model.tmr import get_score_matrix
->>>>>>> 045ca9590646d12c0e3a4de1ddbe6f8e20e4262c
 from .utils import *
 from scipy.ndimage import uniform_filter1d
 

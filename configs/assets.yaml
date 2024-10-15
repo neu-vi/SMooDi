@@ -50,8 +50,4 @@ model:
 RENDER:
   BLENDER_PATH: '/work/vig/zhonglei/stylized_motion/blender-2.93.14-linux-x64/blender'
   FACES_PATH: '/work/vig/zhonglei/stylized_motion/motion-latent-diffusion/deps/smpl_models/smplh/smplh.faces'
-<<<<<<< HEAD
   FOLDER: ./animations
-=======
-  FOLDER: ./animations
->>>>>>> 045ca9590646d12c0e3a4de1ddbe6f8e20e4262c
