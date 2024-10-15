@@ -140,8 +140,4 @@ LOGGER:
   WANDB:
     PROJECT: null
     OFFLINE: False
-<<<<<<< HEAD
     RESUME_ID: null
-=======
-    RESUME_ID: null
->>>>>>> 045ca9590646d12c0e3a4de1ddbe6f8e20e4262c

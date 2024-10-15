@@ -719,11 +719,7 @@ class Text2MotionDatasetCMLDTest(data.Dataset):
         return len(self.name_list) - self.pointer
 
     def __getitem__(self, item):
-<<<<<<< HEAD
         idx_1 = (self.pointer_1 + item) % len(self.name_list)
-=======
-        idx_1 = (self.pointer_1 + item) % len(self.name_list_1)
->>>>>>> 045ca9590646d12c0e3a4de1ddbe6f8e20e4262c
         data_1 = self.data_dict_1[self.name_list[idx_1]]
         motion_1, m_length_1, text_list_1 = data_1["motion"], data_1["length"], data_1["text"]
 
