@@ -18,4 +18,8 @@ RENDER:
   NUM: 8
   MODE: '___no_need__' #sequence frame video
   VID_EXT: 'mp4'
+<<<<<<< HEAD
   FACES_PATH: './deps/smplh/smplh.faces'
+=======
+  FACES_PATH: '/work/vig/zhonglei/stylized_motion/motion-latent-diffusion/deps/smplh/smplh.faces'
+>>>>>>> 045ca9590646d12c0e3a4de1ddbe6f8e20e4262c

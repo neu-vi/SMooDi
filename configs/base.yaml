@@ -37,7 +37,11 @@ TRAIN:
     # IS_STYLE_TEXT: False
     IS_MOTION_CLIP: False
     # STYLE_RECON: False
+<<<<<<< HEAD
     TEST: False
+=======
+    TEST: true
+>>>>>>> 045ca9590646d12c0e3a4de1ddbe6f8e20e4262c
     # SINGLE: False
     # TEST_WALK: False
     # TEST_XIA: False
