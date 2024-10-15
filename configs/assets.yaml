@@ -16,8 +16,8 @@ DATASET:
     # ROOT: '/work/vig/zhonglei/stylized_motion/dataset/100STYLE' # HumanML3D directory
     # SPLIT_ROOT: '/work/vig/zhonglei/stylized_motion/dataset/100STYLE' # HumanML3D splits directory
 
-    ROOT: '/work/vig/zhonglei/stylized_motion/dataset_all' # HumanML3D directory
-    SPLIT_ROOT: '/work/vig/zhonglei/stylized_motion/dataset_all'
+    ROOT: './datasets' # HumanML3D directory
+    SPLIT_ROOT: './datasets'
     
     # ROOT: '/work/vig/zhonglei/stylized_motion/dataset/HumanML3D' # HumanML3D directory
     # SPLIT_ROOT: '/work/vig/zhonglei/stylized_motion/dataset/HumanML3D'
