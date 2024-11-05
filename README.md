@@ -106,8 +106,9 @@ bash train.sh
 ```
 
 Tips:
-1. In `config_cmld_humanml3d.yaml`, setting `is_recon: True` means that cycle loss will not be used during training. 
-2. In fact, the improvement in performance from cycle loss is quite limited. If you want to quickly train a model, you can set `is_recon: True`. With this setting, it will take nearly 50 minutes to train 50 epochs on an A5000 GPU and achieve performance nearly equivalent to the second row in Table 3 of our paper. 
+1. In `config_cmld_humanml3d.yaml`, set `is_recon: True` means that cycle loss will not be used during training. 
+2. In `config_cmld_humanml3d.yaml`, set `guidance_mode: v0` for training.
+3. In fact, the improvement in performance from cycle loss is quite limited. If you want to quickly train a model, you can set `is_recon: True`. With this setting, it will take nearly 50 minutes to train 50 epochs on an A5000 GPU and achieve performance nearly equivalent to the second row in Table 3 of our paper. 
 
 
 ## Evaluate
@@ -116,9 +117,11 @@ You can evaluate model via
 bash test.sh
 ```
 
+
 Tips:
-1. Make sure to set `is_test: True` during evaluation.
-2. In `config_cmld_humanml3d.yaml`, setting `is_guidance: True` means that classifier-based style guidance will be used during evaluation. If `is_guidance: False`, evaluation will take nearly 50 minutes, whereas it will take 4 hours if `is_guidance: True` on an A5000 GPU.
+1. In `config_cmld_humanml3d.yaml`, set `guidance_mode: v2 or v4` for evaluation.
+2. Make sure to set `is_test: True` during evaluation.
+3. In `config_cmld_humanml3d.yaml`, set `is_guidance: True` means that classifier-based style guidance will be used during evaluation. If `is_guidance: False`, evaluation will take nearly 50 minutes, whereas it will take 4 hours if `is_guidance: True` on an A5000 GPU.
 
 ## Acknowledgments
 
