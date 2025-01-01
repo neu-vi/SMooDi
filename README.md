@@ -96,8 +96,8 @@ bash demo.sh
 ```
 
 Tips:
-For some motion styles, the default parameter settings may not achieve the desired results. You can modify the `guidance_scale_style` in `config_cmld_humanml3d.yaml` to achieve a better balance between content preservation and style reflection.
-
+1. For some motion styles, the default parameter settings may not achieve the desired results. You can modify the `guidance_scale_style` in `config_cmld_humanml3d.yaml` to achieve a better balance between content preservation and style reflection.
+2. Make sure to set `is_test: True`.
 
 ## Train your own SMooDi
 You can train your own model via
