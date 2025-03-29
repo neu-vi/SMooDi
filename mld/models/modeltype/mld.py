@@ -446,9 +446,6 @@ class MLD(BaseModel):
         texts = batch["text"]
         lengths = batch["length"]
         motion = batch["motion"].cuda().float()        
-        
-        # style_motion = batch["style_motion"]
-        # style_motion = style_motion[:,:480,:]
 
         latents , dist_m = self.vae.encode(motion, lengths)
 
@@ -502,6 +499,111 @@ class MLD(BaseModel):
             
         # set timesteps
 
+    @torch.no_grad()
+    def mst_forward(self, batch, latents, is_return_feat=False):
+        texts = batch["text"]
+        lengths = batch["length"]
+        # motion = batch["motion"].cuda().float()        
+        style_motion = batch["reference_motion"]
+        style_motion = style_motion[:,:480,:]
+
+        start_step=20
+
+        extra_step_kwargs = {}
+        if "eta" in set(
+                inspect.signature(self.scheduler.step).parameters.keys()):
+            extra_step_kwargs["eta"] = self.cfg.model.scheduler.eta
+
+        self.scheduler.set_timesteps(
+            self.cfg.model.scheduler.num_inference_timesteps)
+        timesteps = self.scheduler.timesteps.cuda()
+
+        #V2
+
+        texts = batch["text"]
+        batch = len(texts)
+        style_motion = style_motion.expand(batch,-1,-1)
+        empty_ref = torch.zeros_like(style_motion)
+
+        
+        if self.guidance_mode == 'v0':
+            uncond_tokens = [""] * len(texts)
+            if self.condition == 'text':
+                uncond_tokens.extend(texts)
+            elif self.condition == 'text_uncond':
+                uncond_tokens.extend(uncond_tokens)
+            texts = uncond_tokens
+            text_emb = self.text_encoder(texts)
+
+            style_motion = style_motion.cuda()
+
+        elif self.guidance_mode == 'v2':
+            uncond_tokens = [""] * len(texts)
+            uncond_tokens2 = [""] * len(texts)
+            if self.condition == 'text':
+                uncond_tokens.extend(texts)
+                uncond_tokens.extend(uncond_tokens2)
+
+            texts = uncond_tokens
+            text_emb = self.text_encoder(texts)
+
+            style_motion = torch.cat((empty_ref,empty_ref,style_motion),dim=0).cuda()
+
+        for i in tqdm(range(start_step, self.cfg.model.scheduler.num_inference_timesteps)):
+            t = timesteps[i]
+            current_t = int(t.cpu().numpy())-1
+
+            if self.guidance_mode == 'v2':
+                latent_model_input = (torch.cat(
+                    [latents] *
+                    3) if self.do_classifier_free_guidance else latents)
+            elif self.guidance_mode == 'v0':
+                latent_model_input = (torch.cat(
+                    [latents] *
+                    2) if self.do_classifier_free_guidance else latents)
+                
+            noise_pred = self.denoiser(
+                    sample=latent_model_input,
+                    timestep=t.cuda(),
+                    encoder_hidden_states=text_emb,
+                    reference=style_motion,
+                    lengths=lengths,
+                )[0]
+
+            if self.guidance_mode == 'v0':
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                if self.is_guidance and current_t < 200:
+                    
+                    with torch.set_grad_enabled(True):
+                        noise_pred = self.guide(noise_pred, t, latents, lengths, style_motion,n_guide_steps=5,scale=0.4)
+
+            elif self.guidance_mode == 'v2':
+                noise_pred_uncond,noise_pred_text,noise_pred_style = noise_pred.chunk(3)
+                delat_pre_text = noise_pred_text - noise_pred_uncond
+                delat_pre_style = noise_pred_style - noise_pred_uncond
+
+                noise_pred = noise_pred_uncond + self.guidance_scale_style * delat_pre_style
+                
+                if self.is_guidance and current_t < 150:
+                    with torch.set_grad_enabled(True):
+                        noise_pred = self.guide(noise_pred, t, latents, lengths, style_motion,n_guide_steps=10,scale=0.4)
+                
+                noise_pred = noise_pred + self.guidance_scale * delat_pre_text
+
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+        latents = latents.permute(1, 0, 2)
+
+        if is_return_feat:
+            return latents
+        else:
+
+            feats_rst = self.vae.decode(latents, lengths)
+            joints = self.feats2joints(feats_rst.detach().cpu())
+            return remove_padding(joints, lengths)
+            
     def forward(self, batch,feature="False"):
         texts = batch["text"]
         lengths = batch["length"]
