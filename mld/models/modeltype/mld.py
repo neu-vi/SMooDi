@@ -1163,7 +1163,7 @@ class MLD(BaseModel):
 
         self.scheduler.set_timesteps(self.cfg.model.scheduler.num_inference_timesteps)
 
-        if self.is_tri and reference_motion_x_same is not None:
+        if reference_motion_x_same is not None:
            
 
             noise_pred_pos = self.denoiser(
