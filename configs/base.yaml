@@ -31,16 +31,9 @@ TRAIN:
     CYCLE: true #true
     RECON: False
     TWODATASET: true #true
-    # IS_ADAIN: False
-    # IS_TRI: False
-    # IS_INFONCE: False
-    # IS_STYLE_TEXT: False
-    # IS_MOTION_CLIP: False
-    # STYLE_RECON: False
+
     TEST: False
-    # SINGLE: False
-    # TEST_WALK: False
-    # TEST_XIA: False
+
 
 EVAL:
   SPLIT: 'gtest'
