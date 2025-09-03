@@ -237,12 +237,8 @@ class ControlMldDenoiser(nn.Module):
         self.arch = arch
         self.pe_type = ablation.DIFF_PE_TYPE
         self.latent_size = latent_dim[0]
-        # self.is_adain = ablation.IS_ADAIN
         self.alpha = 1.0
         self.is_test = ablation.TEST
-        # self.is_test_walk = ablation.TEST_WALK
-
-        # self.is_style_text = ablation.IS_STYLE_TEXT
         
         #MLD
         if text_encoded_dim != self.latent_dim:
